@@ -1,0 +1,9 @@
+{
+  "appId": "YOUR_AZURE_APP_ID",
+  "appPassword": "YOUR_AZURE_APP_PASSWORD",
+  "tenantId": "YOUR_TENANT_ID",
+  "messagingEndpoint": "https://your-server.com/api/messages",
+  "channelPolicy": "mention",
+  "dmPolicy": "open",
+  "useTeamsChannel": true
+}
