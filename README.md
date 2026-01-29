@@ -1,6 +1,12 @@
 # wopr-plugin-msteams
 
+[![npm version](https://img.shields.io/npm/v/wopr-plugin-msteams.svg)](https://www.npmjs.com/package/wopr-plugin-msteams)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![WOPR](https://img.shields.io/badge/WOPR-Plugin-blue)](https://github.com/TSavo/wopr)
+
 Microsoft Teams integration for [WOPR](https://github.com/TSavo/wopr) using [Azure Bot Framework](https://docs.microsoft.com/en-us/azure/bot-service/).
+
+> Part of the [WOPR](https://github.com/TSavo/wopr) ecosystem - Self-sovereign AI session management over P2P.
 
 ## Features
 
