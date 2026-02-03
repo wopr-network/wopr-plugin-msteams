@@ -10,13 +10,12 @@ Microsoft Teams integration for [WOPR](https://github.com/TSavo/wopr) using [Azu
 
 ## Features
 
-- 💼 **Azure Bot Framework** - Official Microsoft SDK
-- 👥 **Channel Support** - Teams, channels, group chats, DMs
-- 🧵 **Threading** - Reply in threads or top-level
-- 🔒 **DM Policies** - Control access per conversation type
-- 👀 **Mention-gated** - Responds to @mentions in channels
-- 💬 **Rich Text** - Markdown support
-- 📎 **Media** - File attachments and images
+- 💼 **Azure Bot Framework** - Official Microsoft SDK (botbuilder v4.22+)
+- 👥 **Channel Support** - Teams channels, group chats, and direct messages
+- 🧵 **Threading** - Configurable reply in threads or top-level
+- 🔒 **Access Policies** - Separate DM and group/channel policies with allowlists
+- 👀 **Mention-gated** - Optionally require @mentions in channels/groups
+- 💬 **Markdown** - Responses support markdown formatting
 
 ## Prerequisites
 
@@ -63,16 +62,34 @@ channels:
     appId: "00000000-0000-0000-0000-000000000000"
     appPassword: "your-client-secret"
     tenantId: "00000000-0000-0000-0000-000000000000"
-    
-    # Optional
-    webhookPort: 3978              # Port for webhook server
-    webhookPath: "/api/messages"   # Webhook endpoint path
-    requireMention: true           # Require @mention in channels
-    replyStyle: "thread"           # "thread" or "top-level"
-    dmPolicy: "pairing"            # DM handling policy
-    allowFrom: []                  # Allowed user IDs
-    groupPolicy: "allowlist"       # Channel/group handling
+
+    # Optional - Webhook settings
+    webhookPort: 3978              # Port for webhook server (default: 3978)
+    webhookPath: "/api/messages"   # Webhook endpoint path (default: /api/messages)
+
+    # Optional - Channel behavior
+    requireMention: true           # Require @mention in channels/groups (default: true)
+    replyStyle: "thread"           # "thread" or "top-level" (default: thread)
+
+    # Optional - DM access control
+    dmPolicy: "pairing"            # "pairing" | "allowlist" | "open" | "disabled"
+    allowFrom: []                  # User IDs for DM allowlist
+
+    # Optional - Group/channel access control
+    groupPolicy: "allowlist"       # "allowlist" | "open" | "disabled"
+    groupAllowFrom: []             # User IDs for group allowlist (falls back to allowFrom)
 ```
+
+### Policy Options
+
+| Policy | Behavior |
+|--------|----------|
+| `open` | Anyone can message |
+| `pairing` | All DMs allowed (DM only) |
+| `allowlist` | Only listed user IDs allowed |
+| `disabled` | Messages ignored |
+
+**Note:** Use `"*"` in `allowFrom` or `groupAllowFrom` to allow all users.
 
 ## Environment Variables
 
@@ -116,50 +133,87 @@ The plugin requires a **public HTTPS endpoint** for Teams to send messages to.
 
 3. **Production**: Use your server's public URL with SSL
 
-## Channel Behavior
+## Message Flow
 
-### Direct Messages
-- Based on `dmPolicy` setting
-- `pairing` - All DMs allowed
-- `allowlist` - Only allowed users
+### Direct Messages (Personal Chats)
+Access controlled by `dmPolicy`:
+- `pairing` (default) - All DMs are processed
+- `allowlist` - Only users in `allowFrom` list
 - `open` - Anyone can DM
-- `disabled` - DMs ignored
+- `disabled` - DMs are ignored
 
-### Team Channels
-- **Mention-gated**: Bot only responds to @mentions (if `requireMention: true`)
-- **Reply style**: Can reply in thread or top-level
-- **Group policy**: Control which users can trigger in channels
+### Team Channels and Group Chats
+Access controlled by `groupPolicy` and `requireMention`:
+- **Mention requirement**: When `requireMention: true` (default), the bot only responds when @mentioned
+- **Access control**: Uses `groupPolicy` with `groupAllowFrom` (falls back to `allowFrom`)
+- **Reply style**: `thread` replies to the original message, `top-level` posts as a new message
+
+### Session Keys
+Each conversation gets a unique session key: `msteams-{conversationId}`
 
 ## Troubleshooting
 
 ### Bot not responding
 1. Check Azure Bot messaging endpoint is correct
-2. Verify app ID and password are correct
+2. Verify app ID, password, and tenant ID are correct
 3. Check Teams app is installed/sideloaded
-4. Look at WOPR logs: `wopr logs --follow`
+4. Look at plugin logs: `~/.wopr/logs/msteams-plugin.log`
+5. Check error logs: `~/.wopr/logs/msteams-plugin-error.log`
+6. In channels, ensure you're @mentioning the bot (if `requireMention: true`)
 
 ### Webhook errors
 - Must use HTTPS in production
 - Endpoint must be publicly accessible
 - Check firewall/proxy settings
+- Verify the webhook handler is properly integrated
 
 ### Authentication errors
 - Verify App ID matches Azure Bot registration
 - Regenerate client secret if expired
 - Check tenant ID is correct
+- All three credentials (appId, appPassword, tenantId) are required
+
+### Policy blocking messages
+- Check `dmPolicy` for direct messages
+- Check `groupPolicy` and `requireMention` for channels
+- Verify user IDs in `allowFrom`/`groupAllowFrom` lists
+
+## Programmatic Usage
+
+The plugin exports a webhook handler for integration with your HTTP server:
+
+```typescript
+import plugin, { handleWebhook } from "wopr-plugin-msteams";
+
+// Initialize the plugin with WOPR context
+await plugin.init(woprContext);
+
+// In your Express/Fastify/etc. server:
+app.post("/api/messages", async (req, res) => {
+  await handleWebhook(req, res);
+});
+```
 
 ## Security
 
-- ✅ Azure Bot Framework handles authentication
-- ✅ Credentials via config or env vars
-- ✅ No message content logged
-- ✅ HTTPS required for webhooks
+- Azure Bot Framework handles authentication via `ConfigurationBotFrameworkAuthentication`
+- Credentials via config file or environment variables
+- Message metadata logged, content passed to WOPR
+- HTTPS required for webhooks in production
+- Built-in error handling with user-friendly error messages
 
 ## Limitations
 
-- Requires public HTTPS endpoint (no built-in polling)
+- Requires public HTTPS endpoint (no built-in polling mode)
 - Complex Azure/Teams setup compared to other channels
-- Webhook server needs to be running continuously
+- Webhook server must be running continuously
+- No adaptive card support yet (text/markdown only)
+- No file attachment handling yet
+
+## Dependencies
+
+- `botbuilder` ^4.22.0 - Microsoft Bot Framework SDK
+- `winston` ^3.11.0 - Logging
 
 ## License
 
