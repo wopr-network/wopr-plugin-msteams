@@ -1,15 +1,19 @@
 {
-  "name": "wopr-plugin-msteams",
-  "version": "1.0.0",
-  "description": "Microsoft Teams plugin for WOPR using Azure Bot Framework",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc",
-    "test": "jest",
-    "lint": "eslint src/**/*.ts",
-    "prepublishOnly": "npm run build"
+  "author": "TSavo",
+  "dependencies": {
+    "botbuilder": "^4.22.0",
+    "winston": "^3.11.0"
   },
+  "description": "Microsoft Teams plugin for WOPR using Azure Bot Framework",
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.14",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist/**/*",
+    "IDENTITY.md"
+  ],
   "keywords": [
     "wopr",
     "wopr-plugin",
@@ -18,21 +22,21 @@
     "azure-bot",
     "bot-framework"
   ],
-  "author": "TSavo",
   "license": "MIT",
+  "main": "dist/index.js",
+  "name": "wopr-plugin-msteams",
   "peerDependencies": {
     "wopr": "^2.0.0"
   },
-  "dependencies": {
-    "botbuilder": "^4.22.0",
-    "winston": "^3.11.0"
+  "scripts": {
+    "build": "tsc",
+    "check": "biome check src/ && tsc --noEmit",
+    "format": "biome format --write src/",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "biome check --fix src/",
+    "prepublishOnly": "npm run build",
+    "test": "jest"
   },
-  "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
-  },
-  "files": [
-    "dist/**/*",
-    "IDENTITY.md"
-  ]
+  "types": "dist/index.d.ts",
+  "version": "1.0.0"
 }
