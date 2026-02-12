@@ -1,6 +1,7 @@
 {
   "author": "TSavo",
   "dependencies": {
+    "@wopr-network/plugin-types": "github:wopr-network/wopr-plugin-types",
     "axios": "^1.13.5",
     "botbuilder": "^4.22.0",
     "winston": "^3.11.0"

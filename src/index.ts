@@ -14,10 +14,8 @@ import type {
   WOPRPlugin,
   WOPRPluginContext,
   ConfigSchema,
-  StreamMessage,
   AgentIdentity,
-  ChannelInfo,
-  LogMessageOptions,
+  ChannelRef,
 } from "./types.js";
 
 // MS Teams config interface
@@ -251,20 +249,18 @@ async function processActivity(activity: Activity): Promise<void> {
 
   // Build channel info
   const channelId = `msteams:${conversationId}`;
-  const channelInfo: ChannelInfo = {
+  const channelInfo: ChannelRef = {
     type: "msteams",
     id: channelId,
     name: activity.conversation?.name || "MS Teams",
   };
 
   // Log for context
-  const logOptions: LogMessageOptions = {
+  const sessionKey = `msteams-${conversationId}`;
+  ctx.logMessage(sessionKey, text, {
     from: userName,
     channel: channelInfo,
-  };
-
-  const sessionKey = `msteams-${conversationId}`;
-  ctx.logMessage(sessionKey, text, logOptions);
+  });
 
   // Inject to WOPR
   await injectMessage(text, userName, sessionKey, channelInfo, activity);
@@ -275,7 +271,7 @@ async function injectMessage(
   text: string,
   userName: string,
   sessionKey: string,
-  channelInfo: ChannelInfo,
+  channelInfo: ChannelRef,
   activity: Activity
 ): Promise<void> {
   if (!ctx) return;
