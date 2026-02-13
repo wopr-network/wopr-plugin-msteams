@@ -10,6 +10,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockContext } from "./mocks/wopr-context.js";
 
+// Track ConfigurationBotFrameworkAuthentication constructor calls
+let lastAuthConfig: any = undefined;
+
 // Mock botbuilder
 vi.mock("botbuilder", () => {
   return {
@@ -24,6 +27,7 @@ vi.mock("botbuilder", () => {
       config: any;
       constructor(config: any) {
         this.config = config;
+        lastAuthConfig = config;
       }
     },
     TurnContext: class MockTurnContext {},
@@ -66,6 +70,7 @@ describe("config schema", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    lastAuthConfig = undefined;
     delete process.env.MSTEAMS_APP_ID;
     delete process.env.MSTEAMS_APP_PASSWORD;
     delete process.env.MSTEAMS_TENANT_ID;
@@ -159,9 +164,12 @@ describe("config schema", () => {
 
     await plugin.init(mockCtx as any);
 
-    // The adapter should have been created (credentials resolved)
-    // We verify by checking that init completed without warning about missing creds
-    expect(mockCtx.registerConfigSchema).toHaveBeenCalled();
+    // ConfigurationBotFrameworkAuthentication should have been constructed
+    // with config-supplied values, not env vars
+    expect(lastAuthConfig).toBeDefined();
+    expect(lastAuthConfig.MicrosoftAppId).toBe("config-app-id");
+    expect(lastAuthConfig.MicrosoftAppPassword).toBe("config-password");
+    expect(lastAuthConfig.MicrosoftAppTenantId).toBe("config-tenant-id");
   });
 
   it("falls back to env vars when config values missing", async () => {
@@ -176,7 +184,11 @@ describe("config schema", () => {
 
     await plugin.init(mockCtx as any);
 
-    // Adapter should be created from env vars
-    expect(mockCtx.registerConfigSchema).toHaveBeenCalled();
+    // ConfigurationBotFrameworkAuthentication should have been constructed
+    // with env var values since config values are missing
+    expect(lastAuthConfig).toBeDefined();
+    expect(lastAuthConfig.MicrosoftAppId).toBe("env-app-id");
+    expect(lastAuthConfig.MicrosoftAppPassword).toBe("env-password");
+    expect(lastAuthConfig.MicrosoftAppTenantId).toBe("env-tenant-id");
   });
 });
