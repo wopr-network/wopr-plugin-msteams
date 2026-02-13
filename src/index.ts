@@ -168,7 +168,7 @@ const configSchema: ConfigSchema = {
 // ============================================================================
 
 const manifest: PluginManifest = {
-  name: "@wopr-network/plugin-msteams",
+  name: "@wopr-network/wopr-plugin-msteams",
   version: "1.0.0",
   description: "Microsoft Teams integration using Azure Bot Framework",
   author: "WOPR Network",
@@ -506,6 +506,8 @@ const plugin: WOPRPlugin = {
       ctx.unregisterExtension("msteams");
     }
 
+    registeredCommands.clear();
+    registeredParsers.clear();
     adapter = null;
     ctx = null;
   },
