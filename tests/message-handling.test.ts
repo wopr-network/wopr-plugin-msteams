@@ -1,5 +1,5 @@
 /**
- * Tests for MS Teams message handling logic (WOP-243)
+ * Tests for MS Teams message handling logic (WOP-243, WOP-115)
  *
  * Tests:
  * - handleWebhook routes activities through the adapter
@@ -16,11 +16,15 @@ import { createMockContext } from "./mocks/wopr-context.js";
 
 // Track adapter.process calls to capture the turn handler
 let capturedTurnHandler: ((context: any) => Promise<void>) | null = null;
+const mockSendActivity = vi.fn().mockResolvedValue({});
 const mockProcess = vi.fn(async (req: any, res: any, handler: any) => {
   capturedTurnHandler = handler;
   // Simulate the adapter calling the handler with a mock turn context
   if (req.__activity) {
-    await handler({ activity: req.__activity });
+    await handler({
+      activity: req.__activity,
+      sendActivity: mockSendActivity,
+    });
   }
 });
 
@@ -33,6 +37,7 @@ vi.mock("botbuilder", () => {
         this.onTurnError = null;
       }
       process = mockProcess;
+      continueConversationAsync = vi.fn();
     },
     ConfigurationBotFrameworkAuthentication: class MockAuth {
       config: any;
@@ -40,7 +45,28 @@ vi.mock("botbuilder", () => {
         this.config = config;
       }
     },
-    TurnContext: class MockTurnContext {},
+    TurnContext: class MockTurnContext {
+      static getConversationReference(activity: any) {
+        return {
+          channelId: activity.channelId || "msteams",
+          serviceUrl: activity.serviceUrl || "https://smba.trafficmanager.net/amer/",
+          conversation: activity.conversation,
+          bot: activity.recipient,
+        };
+      }
+    },
+    CardFactory: {
+      adaptiveCard: vi.fn((card: any) => ({
+        contentType: "application/vnd.microsoft.card.adaptive",
+        content: card,
+      })),
+    },
+    MessageFactory: {
+      attachment: vi.fn((attachment: any) => ({
+        type: "message",
+        attachments: [attachment],
+      })),
+    },
   };
 });
 
@@ -74,6 +100,14 @@ vi.mock("winston", () => {
     },
   };
 });
+
+// Mock axios
+vi.mock("axios", () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+  },
+}));
 
 function makeActivity(overrides: Record<string, any> = {}) {
   return {
@@ -111,6 +145,7 @@ describe("message handling", () => {
       appId: "test-app-id",
       appPassword: "test-password",
       tenantId: "test-tenant-id",
+      useAdaptiveCards: false,
       ...configData,
     };
 
@@ -158,6 +193,19 @@ describe("message handling", () => {
         }),
       })
     );
+  });
+
+  it("sends response back via sendActivity", async () => {
+    const { mod, mockCtx } = await initPlugin({ dmPolicy: "open" });
+    mockCtx.inject.mockResolvedValue("Bot says hello");
+
+    const activity = makeActivity();
+    const mockReq = { __activity: activity };
+    const mockRes = { status: vi.fn().mockReturnThis(), send: vi.fn() };
+
+    await mod.handleWebhook(mockReq, mockRes);
+
+    expect(mockSendActivity).toHaveBeenCalled();
   });
 
   it("skips non-message activities", async () => {

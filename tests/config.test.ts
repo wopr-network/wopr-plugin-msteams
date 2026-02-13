@@ -22,6 +22,7 @@ vi.mock("botbuilder", () => {
         this.onTurnError = null;
       }
       process = vi.fn();
+      continueConversationAsync = vi.fn();
     },
     ConfigurationBotFrameworkAuthentication: class MockAuth {
       config: any;
@@ -30,9 +31,38 @@ vi.mock("botbuilder", () => {
         lastAuthConfig = config;
       }
     },
-    TurnContext: class MockTurnContext {},
+    TurnContext: class MockTurnContext {
+      static getConversationReference(activity: any) {
+        return {
+          channelId: activity.channelId || "msteams",
+          serviceUrl: activity.serviceUrl || "https://smba.trafficmanager.net/amer/",
+          conversation: activity.conversation,
+          bot: activity.recipient,
+        };
+      }
+    },
+    CardFactory: {
+      adaptiveCard: vi.fn((card: any) => ({
+        contentType: "application/vnd.microsoft.card.adaptive",
+        content: card,
+      })),
+    },
+    MessageFactory: {
+      attachment: vi.fn((attachment: any) => ({
+        type: "message",
+        attachments: [attachment],
+      })),
+    },
   };
 });
+
+// Mock axios
+vi.mock("axios", () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+  },
+}));
 
 // Mock winston
 vi.mock("winston", () => {
