@@ -80,8 +80,49 @@ describe("file attachments", () => {
     vi.resetModules();
   });
 
+  describe("isAllowedDownloadHost", () => {
+    it("allows botframework.com URLs", async () => {
+      const { isAllowedDownloadHost } = await import("../src/index.js");
+      expect(isAllowedDownloadHost("https://us-api.asm.skype.com/files/test")).toBe(true);
+      expect(isAllowedDownloadHost("https://media.botframework.com/file.pdf")).toBe(true);
+      expect(isAllowedDownloadHost("https://attachments.teams.microsoft.com/file.pdf")).toBe(true);
+    });
+
+    it("allows bare domain matches", async () => {
+      const { isAllowedDownloadHost } = await import("../src/index.js");
+      expect(isAllowedDownloadHost("https://botframework.com/file.pdf")).toBe(true);
+      expect(isAllowedDownloadHost("https://skype.com/file.pdf")).toBe(true);
+      expect(isAllowedDownloadHost("https://teams.microsoft.com/file.pdf")).toBe(true);
+    });
+
+    it("rejects non-Microsoft domains", async () => {
+      const { isAllowedDownloadHost } = await import("../src/index.js");
+      expect(isAllowedDownloadHost("https://evil.com/file.pdf")).toBe(false);
+      expect(isAllowedDownloadHost("https://example.com/file.pdf")).toBe(false);
+      expect(isAllowedDownloadHost("https://attacker.com/fake.botframework.com")).toBe(false);
+    });
+
+    it("rejects HTTP URLs", async () => {
+      const { isAllowedDownloadHost } = await import("../src/index.js");
+      expect(isAllowedDownloadHost("http://media.botframework.com/file.pdf")).toBe(false);
+    });
+
+    it("rejects invalid URLs", async () => {
+      const { isAllowedDownloadHost } = await import("../src/index.js");
+      expect(isAllowedDownloadHost("not-a-url")).toBe(false);
+      expect(isAllowedDownloadHost("")).toBe(false);
+    });
+
+    it("rejects domain spoofing via subdomain tricks", async () => {
+      const { isAllowedDownloadHost } = await import("../src/index.js");
+      expect(isAllowedDownloadHost("https://evilskype.com/file.pdf")).toBe(false);
+      expect(isAllowedDownloadHost("https://notbotframework.com/file.pdf")).toBe(false);
+      expect(isAllowedDownloadHost("https://faketeams.microsoft.com.evil.com/file.pdf")).toBe(false);
+    });
+  });
+
   describe("downloadAttachment", () => {
-    it("downloads file from contentUrl", async () => {
+    it("downloads file from allowed contentUrl", async () => {
       const { downloadAttachment } = await import("../src/index.js");
 
       mockAxiosGet.mockResolvedValue({
@@ -91,7 +132,7 @@ describe("file attachments", () => {
       const activity = {
         attachments: [
           {
-            contentUrl: "https://example.com/files/report.pdf",
+            contentUrl: "https://media.botframework.com/files/report.pdf",
             name: "report.pdf",
             contentType: "application/pdf",
           },
@@ -104,6 +145,24 @@ describe("file attachments", () => {
       expect(result!.filename).toBe("report.pdf");
       expect(result!.contentType).toBe("application/pdf");
       expect(result!.content).toEqual(Buffer.from("file content"));
+    });
+
+    it("returns null for disallowed host", async () => {
+      const { downloadAttachment } = await import("../src/index.js");
+
+      const activity = {
+        attachments: [
+          {
+            contentUrl: "https://evil.com/files/report.pdf",
+            name: "report.pdf",
+            contentType: "application/pdf",
+          },
+        ],
+      };
+
+      const result = await downloadAttachment(activity as any);
+      expect(result).toBeNull();
+      expect(mockAxiosGet).not.toHaveBeenCalled();
     });
 
     it("returns null when no attachments", async () => {
@@ -119,7 +178,7 @@ describe("file attachments", () => {
 
       const activity = {
         attachments: [
-          { contentUrl: "https://example.com/file.txt", name: "file.txt" },
+          { contentUrl: "https://media.botframework.com/file.txt", name: "file.txt" },
         ],
       };
 
@@ -149,7 +208,7 @@ describe("file attachments", () => {
 
       const activity = {
         attachments: [
-          { contentUrl: "https://example.com/files/unnamed" },
+          { contentUrl: "https://media.botframework.com/files/unnamed" },
         ],
       };
 
@@ -167,16 +226,39 @@ describe("file attachments", () => {
 
       const activity = {
         attachments: [
-          { contentUrl: "https://example.com/first.txt", name: "first.txt" },
-          { contentUrl: "https://example.com/second.txt", name: "second.txt", contentType: "text/plain" },
+          { contentUrl: "https://media.botframework.com/first.txt", name: "first.txt" },
+          { contentUrl: "https://media.botframework.com/second.txt", name: "second.txt", contentType: "text/plain" },
         ],
       };
 
       const result = await downloadAttachment(activity as any, 1);
       expect(result!.filename).toBe("second.txt");
       expect(mockAxiosGet).toHaveBeenCalledWith(
-        "https://example.com/second.txt",
+        "https://media.botframework.com/second.txt",
         expect.any(Object)
+      );
+    });
+
+    it("passes maxContentLength in request config", async () => {
+      const { downloadAttachment } = await import("../src/index.js");
+
+      mockAxiosGet.mockResolvedValue({
+        data: Buffer.from("data"),
+      });
+
+      const activity = {
+        attachments: [
+          { contentUrl: "https://media.botframework.com/file.pdf", name: "file.pdf" },
+        ],
+      };
+
+      await downloadAttachment(activity as any);
+
+      expect(mockAxiosGet).toHaveBeenCalledWith(
+        "https://media.botframework.com/file.pdf",
+        expect.objectContaining({
+          maxContentLength: 25 * 1024 * 1024,
+        })
       );
     });
   });
