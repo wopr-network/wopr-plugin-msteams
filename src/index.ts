@@ -16,6 +16,10 @@ import type {
   ConfigSchema,
   AgentIdentity,
   ChannelRef,
+  ChannelCommand,
+  ChannelMessageParser,
+  ChannelProvider,
+  PluginManifest,
 } from "./types.js";
 
 // MS Teams config interface
@@ -159,6 +163,86 @@ const configSchema: ConfigSchema = {
   ],
 };
 
+// ============================================================================
+// Plugin Manifest (WaaS metadata)
+// ============================================================================
+
+const manifest: PluginManifest = {
+  name: "@wopr-network/wopr-plugin-msteams",
+  version: "1.0.0",
+  description: "Microsoft Teams integration using Azure Bot Framework",
+  author: "WOPR Network",
+  license: "MIT",
+  capabilities: ["channel"],
+  category: "channel",
+  tags: ["msteams", "teams", "azure", "bot-framework", "chat"],
+  icon: "🟦",
+  requires: {
+    env: ["MSTEAMS_APP_ID", "MSTEAMS_APP_PASSWORD", "MSTEAMS_TENANT_ID"],
+    network: {
+      outbound: true,
+      inbound: true,
+    },
+  },
+  configSchema,
+  lifecycle: {
+    shutdownBehavior: "graceful",
+    shutdownTimeoutMs: 10000,
+  },
+};
+
+// ============================================================================
+// Channel Provider (cross-plugin command/parser registration)
+// ============================================================================
+
+const registeredCommands: Map<string, ChannelCommand> = new Map();
+const registeredParsers: Map<string, ChannelMessageParser> = new Map();
+
+const msteamsChannelProvider: ChannelProvider = {
+  id: "msteams",
+
+  registerCommand(cmd: ChannelCommand): void {
+    registeredCommands.set(cmd.name, cmd);
+    logger?.info(`Channel command registered: ${cmd.name}`);
+  },
+
+  unregisterCommand(name: string): void {
+    registeredCommands.delete(name);
+  },
+
+  getCommands(): ChannelCommand[] {
+    return Array.from(registeredCommands.values());
+  },
+
+  addMessageParser(parser: ChannelMessageParser): void {
+    registeredParsers.set(parser.id, parser);
+    logger?.info(`Message parser registered: ${parser.id}`);
+  },
+
+  removeMessageParser(id: string): void {
+    registeredParsers.delete(id);
+  },
+
+  getMessageParsers(): ChannelMessageParser[] {
+    return Array.from(registeredParsers.values());
+  },
+
+  async send(_channel: string, content: string): Promise<void> {
+    // MS Teams requires a TurnContext to send proactive messages.
+    // Proactive messaging requires storing conversation references
+    // which is handled by the webhook flow. For now, log the intent.
+    logger?.info(`Channel send requested: ${content.substring(0, 100)}...`);
+  },
+
+  getBotUsername(): string {
+    return agentIdentity.name || "WOPR";
+  },
+};
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
 // Refresh identity
 async function refreshIdentity(): Promise<void> {
   if (!ctx) return;
@@ -189,7 +273,7 @@ function resolveCredentials(): { appId: string; appPassword: string; tenantId: s
 // Check if sender is allowed
 function isAllowed(userId: string, conversationType: string): boolean {
   const isGroup = conversationType === "channel" || conversationType === "groupChat";
-  
+
   if (isGroup) {
     const policy = config.groupPolicy || "allowlist";
     if (policy === "open") return true;
@@ -216,7 +300,7 @@ async function processActivity(activity: Activity): Promise<void> {
 
   // Skip non-message activities
   if (activity.type !== "message") return;
-  
+
   // Skip messages from the bot itself
   if (activity.from?.id === activity.recipient?.id) return;
 
@@ -347,11 +431,21 @@ function initAdapter(): CloudAdapter | null {
   return newAdapter;
 }
 
-// Plugin definition
+// Extension API exposed to other plugins
+const msteamsExtension = {
+  getBotUsername: () => agentIdentity.name || "WOPR",
+  handleWebhook,
+};
+
+// ============================================================================
+// Plugin Definition
+// ============================================================================
+
 const plugin: WOPRPlugin = {
   name: "msteams",
   version: "1.0.0",
   description: "Microsoft Teams integration using Azure Bot Framework",
+  manifest,
 
   async init(context: WOPRPluginContext): Promise<void> {
     ctx = context;
@@ -362,6 +456,18 @@ const plugin: WOPRPlugin = {
 
     // Register config schema
     ctx.registerConfigSchema("msteams", configSchema);
+
+    // Register as a channel provider so other plugins can add commands/parsers
+    if (ctx.registerChannelProvider) {
+      ctx.registerChannelProvider(msteamsChannelProvider);
+      logger.info("Registered MS Teams channel provider");
+    }
+
+    // Register the MS Teams extension so other plugins can interact
+    if (ctx.registerExtension) {
+      ctx.registerExtension("msteams", msteamsExtension);
+      logger.info("Registered MS Teams extension");
+    }
 
     // Refresh identity
     await refreshIdentity();
@@ -392,6 +498,16 @@ const plugin: WOPRPlugin = {
 
     logger.info("Shutting down MS Teams plugin...");
 
+    // Unregister channel provider and extension
+    if (ctx?.unregisterChannelProvider) {
+      ctx.unregisterChannelProvider("msteams");
+    }
+    if (ctx?.unregisterExtension) {
+      ctx.unregisterExtension("msteams");
+    }
+
+    registeredCommands.clear();
+    registeredParsers.clear();
     adapter = null;
     ctx = null;
   },

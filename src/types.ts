@@ -6,9 +6,18 @@
 // Re-export shared types used by this plugin
 export type {
   AgentIdentity,
+  ChannelCommand,
+  ChannelCommandContext,
+  ChannelMessageContext,
+  ChannelMessageParser,
+  ChannelProvider,
   ChannelRef,
   ConfigSchema,
+  PluginCapability,
+  PluginCategory,
+  PluginLifecycle,
   PluginLogger,
+  PluginManifest,
   StreamMessage,
   UserProfile,
   WOPRPlugin,
