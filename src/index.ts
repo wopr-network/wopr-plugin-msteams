@@ -134,6 +134,26 @@ function initLogger(): winston.Logger {
 // ============================================================================
 
 /**
+ * Parse the Retry-After header value per RFC 7231.
+ * Accepts either a number (delay in seconds) or an HTTP date string.
+ * Returns delay in milliseconds, or 0 if unparseable.
+ */
+export function parseRetryAfter(value: string | undefined | null): number {
+	if (!value) return 0;
+	const seconds = Number(value);
+	if (!Number.isNaN(seconds) && seconds >= 0) {
+		return seconds * 1000;
+	}
+	// Try parsing as HTTP date
+	const date = Date.parse(value);
+	if (!Number.isNaN(date)) {
+		const delayMs = date - Date.now();
+		return delayMs > 0 ? delayMs : 0;
+	}
+	return 0;
+}
+
+/**
  * Execute an async function with retry on transient errors (429, 5xx).
  * Uses exponential backoff with full jitter.
  */
@@ -161,9 +181,9 @@ export async function withRetry<T>(
 			const maxDelay = baseDelayMs * Math.pow(2, attempt);
 			const delay = Math.floor(Math.random() * maxDelay);
 
-			// Use Retry-After header if present (in seconds)
+			// Use Retry-After header if present (seconds or HTTP date per RFC 7231)
 			const retryAfter = err?.response?.headers?.["retry-after"];
-			const retryAfterMs = retryAfter ? Number(retryAfter) * 1000 : 0;
+			const retryAfterMs = parseRetryAfter(retryAfter);
 			const actualDelay = Math.max(delay, retryAfterMs);
 
 			logger?.debug(
@@ -278,6 +298,19 @@ export function isAllowedDownloadHost(url: string): boolean {
 }
 
 /**
+ * Check if a URL belongs to a Skype domain using proper URL parsing.
+ * Used to determine whether to attach a bot auth token.
+ */
+function isSkypeDomain(url: string): boolean {
+	try {
+		const hostname = new URL(url).hostname.toLowerCase();
+		return hostname === "skype.com" || hostname.endsWith(".skype.com");
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Download an attachment from a Teams message.
  * Uses the Bot Connector API with auth token.
  *
@@ -311,7 +344,7 @@ export async function downloadAttachment(
 		const response = await axios.get(downloadUrl, {
 			responseType: "arraybuffer",
 			maxContentLength: MAX_ATTACHMENT_SIZE,
-			headers: att.contentUrl?.includes("skype.com")
+			headers: isSkypeDomain(downloadUrl)
 				? { Authorization: `Bearer ${await getBotToken()}` }
 				: {},
 		});
@@ -325,6 +358,18 @@ export async function downloadAttachment(
 }
 
 /**
+ * Validate that a URL uses the HTTPS protocol.
+ * Prevents mixed content and SSRF via non-HTTPS schemes.
+ */
+export function isHttpsUrl(url: string): boolean {
+	try {
+		return new URL(url).protocol === "https:";
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Build a file info card for sending a file to the user.
  * In Teams, files are sent via consent/info cards.
  */
@@ -333,6 +378,12 @@ export function buildFileCard(
 	contentUrl: string,
 	fileSize?: number,
 ): any {
+	if (contentUrl && !isHttpsUrl(contentUrl)) {
+		throw new Error(
+			`contentUrl must be an HTTPS URL, got: ${contentUrl}`,
+		);
+	}
+
 	const card: Record<string, any> = {
 		contentType: "application/vnd.microsoft.teams.card.file.info",
 		name: filename,
@@ -353,7 +404,12 @@ export function buildFileCard(
 /** Get a bot token for authenticated API calls. */
 async function getBotToken(): Promise<string> {
 	const creds = resolveCredentials();
-	if (!creds) return "";
+	if (!creds) {
+		throw new Error(
+			"Cannot obtain bot token: MS Teams credentials are not configured. " +
+				"Set appId, appPassword, and tenantId in config or environment variables.",
+		);
+	}
 
 	const tokenResponse = await axios.post(
 		`https://login.microsoftonline.com/${creds.tenantId}/oauth2/v2.0/token`,
@@ -366,7 +422,13 @@ async function getBotToken(): Promise<string> {
 		{ headers: { "Content-Type": "application/x-www-form-urlencoded" } },
 	);
 
-	return tokenResponse.data.access_token;
+	const token = tokenResponse.data.access_token;
+	if (!token) {
+		throw new Error(
+			"Bot token response did not contain an access_token.",
+		);
+	}
+	return token;
 }
 
 // ============================================================================
@@ -982,6 +1044,23 @@ const plugin: WOPRPlugin = {
 				"MS Teams credentials not configured. Run 'wopr configure --plugin msteams' to set up.",
 			);
 			return;
+		}
+
+		// Validate that credentials are non-empty strings
+		if (!creds.appId.trim()) {
+			throw new Error(
+				"MS Teams appId is empty. Provide a valid Azure Bot App ID.",
+			);
+		}
+		if (!creds.appPassword.trim()) {
+			throw new Error(
+				"MS Teams appPassword is empty. Provide a valid Azure Bot App Password.",
+			);
+		}
+		if (!creds.tenantId.trim()) {
+			throw new Error(
+				"MS Teams tenantId is empty. Provide a valid Azure AD Tenant ID.",
+			);
 		}
 
 		// Initialize adapter
