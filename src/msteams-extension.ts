@@ -8,9 +8,6 @@
  * accumulated passively from incoming activities.
  */
 
-import type { CloudAdapter } from "botbuilder";
-import type { WOPRPluginContext } from "./types";
-
 // ============================================================================
 // Runtime state interface
 // ============================================================================
@@ -81,8 +78,6 @@ export interface MsteamsExtension {
 // ============================================================================
 
 export function createMsteamsExtension(
-  getAdapter: () => CloudAdapter | null,
-  getCtx: () => WOPRPluginContext | null,
   getState: () => MsteamsPluginState,
 ): MsteamsExtension {
   return {

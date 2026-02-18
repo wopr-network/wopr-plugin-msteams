@@ -749,6 +749,32 @@ function storeConversationReference(activity: Activity): void {
 }
 
 // ============================================================================
+// Bounded Collection Helpers
+// ============================================================================
+
+/** Maximum entries for tracking Sets/Maps to prevent unbounded growth. */
+const MAX_TRACKING_ENTRIES = 10_000;
+
+/** Add to a Set, evicting the oldest entry if over capacity. */
+function addBounded<T>(set: Set<T>, value: T): void {
+	set.add(value);
+	if (set.size > MAX_TRACKING_ENTRIES) {
+		// Sets iterate in insertion order; delete the first (oldest) entry
+		const oldest = set.values().next().value;
+		if (oldest !== undefined) set.delete(oldest);
+	}
+}
+
+/** Set a key on a Map, evicting the oldest entry if over capacity. */
+function addBoundedMap<K, V>(map: Map<K, V>, key: K, value: V): void {
+	map.set(key, value);
+	if (map.size > MAX_TRACKING_ENTRIES) {
+		const oldest = map.keys().next().value;
+		if (oldest !== undefined) map.delete(oldest);
+	}
+}
+
+// ============================================================================
 // Activity Processing
 // ============================================================================
 
@@ -796,18 +822,18 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
 
 	// Track state for WebMCP extension
 	pluginState.messagesProcessed++;
-	pluginState.activeConversations.add(conversationId);
+	addBounded(pluginState.activeConversations, conversationId);
 
 	// Track tenant
 	const tenantId = activity.conversation?.tenantId;
 	if (tenantId) {
-		pluginState.tenants.add(tenantId);
+		addBounded(pluginState.tenants, tenantId);
 	}
 
 	// Track team info from channelData
 	const teamData = (activity as any).channelData?.team;
 	if (teamData?.id) {
-		pluginState.teams.set(teamData.id, {
+		addBoundedMap(pluginState.teams, teamData.id, {
 			id: teamData.id,
 			name: teamData.name || teamData.id,
 		});
@@ -1111,8 +1137,6 @@ const plugin: WOPRPlugin = {
 
 		// Create and register the WebMCP extension
 		const webmcpExtension = createMsteamsExtension(
-			() => adapter,
-			() => ctx,
 			() => pluginState,
 		);
 
