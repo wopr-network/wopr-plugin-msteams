@@ -3,7 +3,6 @@ import {
   createMsteamsExtension,
   type MsteamsPluginState,
 } from "../src/msteams-extension";
-import type { WOPRPluginContext } from "../src/types";
 
 function freshState(): MsteamsPluginState {
   return {
@@ -13,12 +12,8 @@ function freshState(): MsteamsPluginState {
     channels: new Map(),
     tenants: new Set(),
     messagesProcessed: 0,
-    activeConversations: new Set(),
+    totalConversations: 0,
   };
-}
-
-function createMockCtx(): WOPRPluginContext {
-  return {} as unknown as WOPRPluginContext;
 }
 
 describe("MsteamsExtension WebMCP methods", () => {
@@ -26,8 +21,6 @@ describe("MsteamsExtension WebMCP methods", () => {
     it("should return offline status when adapter is null", () => {
       const state = freshState();
       const ext = createMsteamsExtension(
-        () => null,
-        () => null,
         () => state,
       );
 
@@ -49,12 +42,10 @@ describe("MsteamsExtension WebMCP methods", () => {
         channels: new Map(),
         tenants: new Set(["tenant-a", "tenant-b"]),
         messagesProcessed: 10,
-        activeConversations: new Set(["conv-1"]),
+        totalConversations: 1,
       };
 
       const ext = createMsteamsExtension(
-        () => ({} as any),
-        () => createMockCtx(),
         () => state,
       );
 
@@ -71,8 +62,6 @@ describe("MsteamsExtension WebMCP methods", () => {
     it("should return empty array when no teams tracked", () => {
       const state = freshState();
       const ext = createMsteamsExtension(
-        () => null,
-        () => null,
         () => state,
       );
 
@@ -89,8 +78,6 @@ describe("MsteamsExtension WebMCP methods", () => {
       };
 
       const ext = createMsteamsExtension(
-        () => null,
-        () => null,
         () => state,
       );
 
@@ -105,8 +92,6 @@ describe("MsteamsExtension WebMCP methods", () => {
     it("should return empty array when no channels tracked", () => {
       const state = freshState();
       const ext = createMsteamsExtension(
-        () => null,
-        () => null,
         () => state,
       );
 
@@ -132,8 +117,6 @@ describe("MsteamsExtension WebMCP methods", () => {
       };
 
       const ext = createMsteamsExtension(
-        () => null,
-        () => null,
         () => state,
       );
 
@@ -162,8 +145,6 @@ describe("MsteamsExtension WebMCP methods", () => {
       };
 
       const ext = createMsteamsExtension(
-        () => null,
-        () => null,
         () => state,
       );
 
@@ -182,8 +163,6 @@ describe("MsteamsExtension WebMCP methods", () => {
       };
 
       const ext = createMsteamsExtension(
-        () => null,
-        () => null,
         () => state,
       );
 
@@ -195,8 +174,6 @@ describe("MsteamsExtension WebMCP methods", () => {
     it("should return zeros when state is fresh", () => {
       const state = freshState();
       const ext = createMsteamsExtension(
-        () => null,
-        () => null,
         () => state,
       );
 
@@ -208,12 +185,10 @@ describe("MsteamsExtension WebMCP methods", () => {
       const state: MsteamsPluginState = {
         ...freshState(),
         messagesProcessed: 25,
-        activeConversations: new Set(["conv-1", "conv-2", "conv-3"]),
+        totalConversations: 3,
       };
 
       const ext = createMsteamsExtension(
-        () => ({} as any),
-        () => createMockCtx(),
         () => state,
       );
 

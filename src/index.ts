@@ -103,7 +103,7 @@ let pluginState: MsteamsPluginState = {
 	channels: new Map(),
 	tenants: new Set(),
 	messagesProcessed: 0,
-	activeConversations: new Set(),
+	totalConversations: 0,
 };
 
 // ============================================================================
@@ -822,7 +822,9 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
 
 	// Track state for WebMCP extension
 	pluginState.messagesProcessed++;
-	addBounded(pluginState.activeConversations, conversationId);
+	if (!conversationReferences.has(conversationId)) {
+		pluginState.totalConversations++;
+	}
 
 	// Track tenant
 	const tenantId = activity.conversation?.tenantId;
@@ -1163,6 +1165,7 @@ const plugin: WOPRPlugin = {
 		}
 		if (ctx?.unregisterExtension) {
 			ctx.unregisterExtension("msteams");
+			ctx.unregisterExtension("msteams-webmcp");
 		}
 
 		registeredCommands.clear();
@@ -1179,7 +1182,7 @@ const plugin: WOPRPlugin = {
 			channels: new Map(),
 			tenants: new Set(),
 			messagesProcessed: 0,
-			activeConversations: new Set(),
+			totalConversations: 0,
 		};
 	},
 };

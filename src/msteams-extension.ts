@@ -30,8 +30,8 @@ export interface MsteamsPluginState {
   tenants: Set<string>;
   /** Total messages processed */
   messagesProcessed: number;
-  /** Active conversation IDs (sessions with recent activity) */
-  activeConversations: Set<string>;
+  /** Total number of unique conversations ever seen */
+  totalConversations: number;
 }
 
 // ============================================================================
@@ -124,7 +124,7 @@ export function createMsteamsExtension(
       const state = getState();
       return {
         messagesProcessed: state.messagesProcessed,
-        activeConversations: state.activeConversations.size,
+        activeConversations: state.totalConversations,
       };
     },
   };
