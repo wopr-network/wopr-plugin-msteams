@@ -33,6 +33,7 @@ import type {
 	ChannelProvider,
 	PluginManifest,
 } from "./types.js";
+import { createMsteamsExtension, type MsteamsPluginState } from "./msteams-extension";
 
 // ============================================================================
 // Types
@@ -93,6 +94,17 @@ const conversationReferences: Map<
 	string,
 	Partial<ConversationReference>
 > = new Map();
+
+// Plugin runtime state for WebMCP extension
+let pluginState: MsteamsPluginState = {
+	initialized: false,
+	startedAt: null,
+	teams: new Map(),
+	channels: new Map(),
+	tenants: new Set(),
+	messagesProcessed: 0,
+	activeConversations: new Set(),
+};
 
 // ============================================================================
 // Logger
@@ -782,6 +794,38 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
 		}
 	}
 
+	// Track state for WebMCP extension
+	pluginState.messagesProcessed++;
+	pluginState.activeConversations.add(conversationId);
+
+	// Track tenant
+	const tenantId = activity.conversation?.tenantId;
+	if (tenantId) {
+		pluginState.tenants.add(tenantId);
+	}
+
+	// Track team info from channelData
+	const teamData = (activity as any).channelData?.team;
+	if (teamData?.id) {
+		pluginState.teams.set(teamData.id, {
+			id: teamData.id,
+			name: teamData.name || teamData.id,
+		});
+	}
+
+	// Track channel info
+	const channelData = (activity as any).channelData?.channel;
+	if (channelData?.id && teamData?.id) {
+		if (!pluginState.channels.has(teamData.id)) {
+			pluginState.channels.set(teamData.id, new Map());
+		}
+		pluginState.channels.get(teamData.id)!.set(channelData.id, {
+			id: channelData.id,
+			name: channelData.name || activity.conversation?.name || channelData.id,
+			type: channelData.type || "standard",
+		});
+	}
+
 	// Check for slash commands first
 	const cmdMatch = matchSlashCommand(text);
 	if (cmdMatch) {
@@ -835,27 +879,18 @@ async function handleSlashCommand(
 	command: ChannelCommand,
 	args: string,
 	userId: string,
-	userName: string,
+	_userName: string,
 	conversationId: string,
 ): Promise<void> {
-	const channelInfo: ChannelRef = {
-		type: "msteams",
-		id: `msteams:${conversationId}`,
-		name: turnContext.activity.conversation?.name || "MS Teams",
-	};
-
 	try {
-		const result = await command.handler({
-			args,
-			userId,
-			userName,
-			channelId: conversationId,
-			channel: channelInfo,
+		await command.handler({
+			channel: `msteams:${conversationId}`,
+			channelType: "msteams",
+			sender: userId,
+			args: args ? args.split(" ").filter(Boolean) : [],
+			reply: async (msg: string) => { await sendResponse(turnContext, msg); },
+			getBotUsername: () => agentIdentity.name || "WOPR",
 		});
-
-		if (result) {
-			await sendResponse(turnContext, result);
-		}
 	} catch (err) {
 		logger.error(`Slash command /${command.name} failed:`, err);
 		await sendResponse(
@@ -1070,6 +1105,22 @@ const plugin: WOPRPlugin = {
 			return;
 		}
 
+		// Mark state as initialized
+		pluginState.initialized = true;
+		pluginState.startedAt = Date.now();
+
+		// Create and register the WebMCP extension
+		const webmcpExtension = createMsteamsExtension(
+			() => adapter,
+			() => ctx,
+			() => pluginState,
+		);
+
+		if (ctx.registerExtension) {
+			ctx.registerExtension("msteams-webmcp", webmcpExtension);
+			logger.info("Registered MS Teams WebMCP extension");
+		}
+
 		logger.info("MS Teams plugin initialized");
 		logger.info(
 			`Webhook endpoint: http://localhost:${config.webhookPort || 3978}${config.webhookPath || "/api/messages"}`,
@@ -1095,6 +1146,17 @@ const plugin: WOPRPlugin = {
 		conversationReferences.clear();
 		adapter = null;
 		ctx = null;
+
+		// Reset plugin state
+		pluginState = {
+			initialized: false,
+			startedAt: null,
+			teams: new Map(),
+			channels: new Map(),
+			tenants: new Set(),
+			messagesProcessed: 0,
+			activeConversations: new Set(),
+		};
 	},
 };
 

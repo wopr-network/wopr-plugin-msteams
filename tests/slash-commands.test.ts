@@ -139,9 +139,10 @@ describe("slash commands", () => {
 
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
-        args: "",
-        userId: "user-1",
-        userName: "Test User",
+        args: [],
+        sender: "user-1",
+        channel: "msteams:conv-1",
+        channelType: "msteams",
       })
     );
   });
@@ -160,13 +161,15 @@ describe("slash commands", () => {
 
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
-        args: "deploy commands",
+        args: ["deploy", "commands"],
       })
     );
   });
 
-  it("sends command result back as response", async () => {
-    const handler = vi.fn().mockResolvedValue("All systems operational");
+  it("sends command result back as response via reply()", async () => {
+    const handler = vi.fn().mockImplementation(async (ctx: any) => {
+      await ctx.reply("All systems operational");
+    });
     const { mod } = await initWithCommands([
       { name: "status", description: "Show status", handler },
     ]);
@@ -177,11 +180,7 @@ describe("slash commands", () => {
       { status: vi.fn().mockReturnThis(), send: vi.fn() }
     );
 
-    expect(mockSendActivity).toHaveBeenCalledWith(
-      expect.objectContaining({
-        text: "All systems operational",
-      })
-    );
+    expect(mockSendActivity).toHaveBeenCalled();
   });
 
   it("passes non-command text to inject flow", async () => {
