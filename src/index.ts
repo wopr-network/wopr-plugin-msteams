@@ -845,9 +845,9 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
 	const channelData = (activity as any).channelData?.channel;
 	if (channelData?.id && teamData?.id) {
 		if (!pluginState.channels.has(teamData.id)) {
-			pluginState.channels.set(teamData.id, new Map());
+			addBoundedMap(pluginState.channels, teamData.id, new Map());
 		}
-		pluginState.channels.get(teamData.id)!.set(channelData.id, {
+		addBoundedMap(pluginState.channels.get(teamData.id)!, channelData.id, {
 			id: channelData.id,
 			name: channelData.name || activity.conversation?.name || channelData.id,
 			type: channelData.type || "standard",
