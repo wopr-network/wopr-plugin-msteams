@@ -14,8 +14,7 @@
     "vitest": "^4.0.18"
   },
   "files": [
-    "dist/**/*",
-    "IDENTITY.md"
+    "dist"
   ],
   "keywords": [
     "wopr",
@@ -28,9 +27,6 @@
   "license": "MIT",
   "main": "dist/index.js",
   "name": "@wopr-network/wopr-plugin-msteams",
-  "peerDependencies": {
-    "wopr": "^2.0.0"
-  },
   "scripts": {
     "build": "tsc",
     "check": "biome check src/ && tsc --noEmit",
