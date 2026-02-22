@@ -10,33 +10,32 @@
  */
 
 import path from "node:path";
-import winston from "winston";
 import axios from "axios";
 import {
+	type Activity,
+	CardFactory,
 	CloudAdapter,
 	ConfigurationBotFrameworkAuthentication,
-	TurnContext,
-	Activity,
-	ConversationReference,
-	CardFactory,
+	type ConversationReference,
 	MessageFactory,
-	Attachment,
+	TurnContext,
 } from "botbuilder";
-import type {
-	WOPRPlugin,
-	WOPRPluginContext,
-	ConfigSchema,
-	AgentIdentity,
-	ChannelRef,
-	ChannelCommand,
-	ChannelMessageParser,
-	ChannelProvider,
-	PluginManifest,
-} from "./types.js";
+import winston from "winston";
 import {
 	createMsteamsExtension,
 	type MsteamsPluginState,
 } from "./msteams-extension";
+import type {
+	AgentIdentity,
+	ChannelCommand,
+	ChannelMessageParser,
+	ChannelProvider,
+	ChannelRef,
+	ConfigSchema,
+	PluginManifest,
+	WOPRPlugin,
+	WOPRPluginContext,
+} from "./types.js";
 
 // ============================================================================
 // Types
@@ -89,7 +88,7 @@ let ctx: WOPRPluginContext | null = null;
 let config: MSTeamsConfig = {};
 let agentIdentity: AgentIdentity = { name: "WOPR", emoji: "\u{1F440}" };
 let adapter: CloudAdapter | null = null;
-let isShuttingDown = false;
+let _isShuttingDown = false;
 let logger: winston.Logger;
 
 // Store conversation references for proactive messaging
@@ -193,7 +192,7 @@ export async function withRetry<T>(
 			}
 
 			// Exponential backoff with full jitter
-			const maxDelay = baseDelayMs * Math.pow(2, attempt);
+			const maxDelay = baseDelayMs * 2 ** attempt;
 			const delay = Math.floor(Math.random() * maxDelay);
 
 			// Use Retry-After header if present (seconds or HTTP date per RFC 7231)
@@ -627,7 +626,7 @@ const msteamsChannelProvider: ChannelProvider = {
 		}
 
 		await withRetry(async () => {
-			await adapter!.continueConversationAsync(
+			await adapter?.continueConversationAsync(
 				resolveCredentials()?.appId || "",
 				ref as ConversationReference,
 				async (turnContext: TurnContext) => {
@@ -1050,7 +1049,7 @@ const msteamsExtension = {
 		}
 
 		await withRetry(async () => {
-			await adapter!.continueConversationAsync(
+			await adapter?.continueConversationAsync(
 				resolveCredentials()?.appId || "",
 				ref as ConversationReference,
 				async (turnContext: TurnContext) => {
@@ -1154,7 +1153,7 @@ const plugin: WOPRPlugin = {
 	},
 
 	async shutdown(): Promise<void> {
-		isShuttingDown = true;
+		_isShuttingDown = true;
 
 		logger.info("Shutting down MS Teams plugin...");
 
