@@ -33,7 +33,10 @@ import type {
 	ChannelProvider,
 	PluginManifest,
 } from "./types.js";
-import { createMsteamsExtension, type MsteamsPluginState } from "./msteams-extension";
+import {
+	createMsteamsExtension,
+	type MsteamsPluginState,
+} from "./msteams-extension";
 
 // ============================================================================
 // Types
@@ -391,9 +394,7 @@ export function buildFileCard(
 	fileSize?: number,
 ): any {
 	if (contentUrl && !isHttpsUrl(contentUrl)) {
-		throw new Error(
-			`contentUrl must be an HTTPS URL, got: ${contentUrl}`,
-		);
+		throw new Error(`contentUrl must be an HTTPS URL, got: ${contentUrl}`);
 	}
 
 	const card: Record<string, any> = {
@@ -436,9 +437,7 @@ async function getBotToken(): Promise<string> {
 
 	const token = tokenResponse.data.access_token;
 	if (!token) {
-		throw new Error(
-			"Bot token response did not contain an access_token.",
-		);
+		throw new Error("Bot token response did not contain an access_token.");
 	}
 	return token;
 }
@@ -916,7 +915,9 @@ async function handleSlashCommand(
 			channelType: "msteams",
 			sender: userId,
 			args: args ? args.split(" ").filter(Boolean) : [],
-			reply: async (msg: string) => { await sendResponse(turnContext, msg); },
+			reply: async (msg: string) => {
+				await sendResponse(turnContext, msg);
+			},
 			getBotUsername: () => agentIdentity.name || "WOPR",
 		});
 	} catch (err) {
@@ -1138,9 +1139,7 @@ const plugin: WOPRPlugin = {
 		pluginState.startedAt = Date.now();
 
 		// Create and register the WebMCP extension
-		const webmcpExtension = createMsteamsExtension(
-			() => pluginState,
-		);
+		const webmcpExtension = createMsteamsExtension(() => pluginState);
 
 		if (ctx.registerExtension) {
 			ctx.registerExtension("msteams-webmcp", webmcpExtension);
