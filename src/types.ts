@@ -75,6 +75,7 @@ export interface ConfigField {
 	default?: unknown;
 	description?: string;
 	options?: Array<{ value: string; label: string }>;
+	setupFlow?: "paste" | "oauth" | "qr" | "interactive" | "none";
 }
 
 export interface ConfigSchema {
