@@ -468,7 +468,7 @@ const configSchema = {
 			placeholder: "00000000-0000-0000-0000-000000000000",
 			required: true,
 			description: "Azure Bot App ID",
-			setupFlow: "required",
+			setupFlow: "paste",
 		},
 		{
 			name: "appPassword",
@@ -478,7 +478,7 @@ const configSchema = {
 			required: true,
 			description: "Azure Bot App Password (Client Secret)",
 			secret: true,
-			setupFlow: "required",
+			setupFlow: "paste",
 		},
 		{
 			name: "tenantId",
@@ -487,7 +487,7 @@ const configSchema = {
 			placeholder: "00000000-0000-0000-0000-000000000000",
 			required: true,
 			description: "Azure AD Tenant ID",
-			setupFlow: "required",
+			setupFlow: "paste",
 		},
 		{
 			name: "webhookPort",
