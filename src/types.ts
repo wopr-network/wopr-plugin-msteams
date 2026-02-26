@@ -75,6 +75,8 @@ export interface ConfigField {
 	default?: unknown;
 	description?: string;
 	options?: Array<{ value: string; label: string }>;
+	secret?: boolean;
+	setupFlow?: "required" | "optional";
 }
 
 export interface ConfigSchema {
@@ -171,6 +173,7 @@ export interface PluginManifest {
 		};
 		capabilities?: string[];
 	};
+	provides?: string[];
 	configSchema?: ConfigSchema;
 	lifecycle?: PluginLifecycle;
 }

@@ -88,8 +88,10 @@ let ctx: WOPRPluginContext | null = null;
 let config: MSTeamsConfig = {};
 let agentIdentity: AgentIdentity = { name: "WOPR", emoji: "\u{1F440}" };
 let adapter: CloudAdapter | null = null;
-let _isShuttingDown = false;
+let isShuttingDown = false;
 let logger: winston.Logger;
+
+const cleanups: Array<() => void> = [];
 
 // Store conversation references for proactive messaging
 const conversationReferences: Map<
@@ -182,13 +184,17 @@ export async function withRetry<T>(
 	for (let attempt = 0; attempt <= maxRetries; attempt++) {
 		try {
 			return await fn();
-		} catch (err: any) {
-			lastError = err;
-			const status = err?.response?.status ?? err?.statusCode ?? 0;
+		} catch (error: unknown) {
+			lastError = error;
+			const errObj = error as {
+				response?: { status?: number; headers?: Record<string, string> };
+				statusCode?: number;
+			};
+			const status = errObj?.response?.status ?? errObj?.statusCode ?? 0;
 			const isRetryable = status === 429 || (status >= 500 && status < 600);
 
 			if (!isRetryable || attempt === maxRetries) {
-				throw err;
+				throw error;
 			}
 
 			// Exponential backoff with full jitter
@@ -196,7 +202,7 @@ export async function withRetry<T>(
 			const delay = Math.floor(Math.random() * maxDelay);
 
 			// Use Retry-After header if present (seconds or HTTP date per RFC 7231)
-			const retryAfter = err?.response?.headers?.["retry-after"];
+			const retryAfter = errObj?.response?.headers?.["retry-after"];
 			const retryAfterMs = parseRetryAfter(retryAfter);
 			const actualDelay = Math.max(delay, retryAfterMs);
 
@@ -217,8 +223,10 @@ export async function withRetry<T>(
  * Build an Adaptive Card JSON payload from options.
  * Returns a Bot Framework Attachment.
  */
-export function buildAdaptiveCard(options: AdaptiveCardOptions): any {
-	const body: any[] = [];
+export function buildAdaptiveCard(
+	options: AdaptiveCardOptions,
+): import("botbuilder").Attachment {
+	const body: Array<Record<string, unknown>> = [];
 
 	if (options.title) {
 		body.push({
@@ -244,7 +252,7 @@ export function buildAdaptiveCard(options: AdaptiveCardOptions): any {
 		});
 	}
 
-	const card: any = {
+	const card: Record<string, unknown> = {
 		type: "AdaptiveCard",
 		$schema: "http://adaptivecards.io/schemas/adaptive-card.json",
 		version: "1.4",
@@ -391,24 +399,26 @@ export function buildFileCard(
 	filename: string,
 	contentUrl: string,
 	fileSize?: number,
-): any {
+): Record<string, unknown> {
 	if (contentUrl && !isHttpsUrl(contentUrl)) {
 		throw new Error(`contentUrl must be an HTTPS URL, got: ${contentUrl}`);
 	}
 
-	const card: Record<string, any> = {
+	const content: Record<string, unknown> = {
+		fileType: filename.split(".").pop() || "unknown",
+		uniqueId: `file-${Date.now()}`,
+	};
+	if (fileSize !== undefined) {
+		content.fileSize = fileSize;
+	}
+
+	const card: Record<string, unknown> = {
 		contentType: "application/vnd.microsoft.teams.card.file.info",
 		name: filename,
-		content: {
-			fileType: filename.split(".").pop() || "unknown",
-			uniqueId: `file-${Date.now()}`,
-		},
+		content,
 	};
 	if (contentUrl) {
 		card.contentUrl = contentUrl;
-	}
-	if (fileSize !== undefined) {
-		(card.content as any).fileSize = fileSize;
 	}
 	return card;
 }
@@ -456,6 +466,7 @@ const configSchema: ConfigSchema = {
 			placeholder: "00000000-0000-0000-0000-000000000000",
 			required: true,
 			description: "Azure Bot App ID",
+			setupFlow: "required",
 		},
 		{
 			name: "appPassword",
@@ -464,6 +475,8 @@ const configSchema: ConfigSchema = {
 			placeholder: "secret",
 			required: true,
 			description: "Azure Bot App Password (Client Secret)",
+			secret: true,
+			setupFlow: "required",
 		},
 		{
 			name: "tenantId",
@@ -472,6 +485,7 @@ const configSchema: ConfigSchema = {
 			placeholder: "00000000-0000-0000-0000-000000000000",
 			required: true,
 			description: "Azure AD Tenant ID",
+			setupFlow: "required",
 		},
 		{
 			name: "webhookPort",
@@ -573,6 +587,7 @@ const manifest: PluginManifest = {
 			inbound: true,
 		},
 	},
+	provides: ["channel"],
 	configSchema,
 	lifecycle: {
 		shutdownBehavior: "graceful",
@@ -680,8 +695,8 @@ async function refreshIdentity(): Promise<void> {
 			agentIdentity = { ...agentIdentity, ...identity };
 			logger.info("Identity refreshed:", agentIdentity.name);
 		}
-	} catch (e) {
-		logger.warn("Failed to refresh identity:", String(e));
+	} catch (error: unknown) {
+		logger.warn("Failed to refresh identity:", String(error));
 	}
 }
 
@@ -831,7 +846,14 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
 	}
 
 	// Track team info from channelData
-	const teamData = (activity as any).channelData?.team;
+	type TeamsChannelData = {
+		channelData?: {
+			team?: { id: string; name?: string };
+			channel?: { id: string; name?: string; type?: string };
+		};
+	};
+	const teamsActivity = activity as unknown as TeamsChannelData;
+	const teamData = teamsActivity.channelData?.team;
 	if (teamData?.id) {
 		addBoundedMap(pluginState.teams, teamData.id, {
 			id: teamData.id,
@@ -840,16 +862,19 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
 	}
 
 	// Track channel info
-	const channelData = (activity as any).channelData?.channel;
+	const channelData = teamsActivity.channelData?.channel;
 	if (channelData?.id && teamData?.id) {
 		if (!pluginState.channels.has(teamData.id)) {
 			addBoundedMap(pluginState.channels, teamData.id, new Map());
 		}
-		addBoundedMap(pluginState.channels.get(teamData.id)!, channelData.id, {
-			id: channelData.id,
-			name: channelData.name || activity.conversation?.name || channelData.id,
-			type: channelData.type || "standard",
-		});
+		const teamChannels = pluginState.channels.get(teamData.id);
+		if (teamChannels) {
+			addBoundedMap(teamChannels, channelData.id, {
+				id: channelData.id,
+				name: channelData.name || activity.conversation?.name || channelData.id,
+				type: channelData.type || "standard",
+			});
+		}
 	}
 
 	// Check for slash commands first
@@ -919,8 +944,8 @@ async function handleSlashCommand(
 			},
 			getBotUsername: () => agentIdentity.name || "WOPR",
 		});
-	} catch (err) {
-		logger.error(`Slash command /${command.name} failed:`, err);
+	} catch (error: unknown) {
+		logger.error(`Slash command /${command.name} failed:`, String(error));
 		await sendResponse(
 			turnContext,
 			`Command /${command.name} failed. Please try again.`,
@@ -992,6 +1017,7 @@ async function sendResponse(
 // Webhook Handler
 // ============================================================================
 
+// biome-ignore lint/suspicious/noExplicitAny: botbuilder adapter.process() requires framework-specific Request/Response types
 export async function handleWebhook(req: any, res: any): Promise<void> {
 	if (!adapter) {
 		res.status(500).send("Bot not initialized");
@@ -1153,11 +1179,27 @@ const plugin: WOPRPlugin = {
 	},
 
 	async shutdown(): Promise<void> {
-		_isShuttingDown = true;
+		if (isShuttingDown) return;
+		isShuttingDown = true;
 
-		logger.info("Shutting down MS Teams plugin...");
+		logger?.info("Shutting down MS Teams plugin...");
 
-		// Unregister channel provider and extension
+		// Run all cleanups
+		for (const cleanup of cleanups) {
+			try {
+				cleanup();
+			} catch (error: unknown) {
+				logger?.warn(`Cleanup failed: ${String(error)}`);
+			}
+		}
+		cleanups.length = 0;
+
+		// Unregister config schema
+		if (ctx?.unregisterConfigSchema) {
+			ctx.unregisterConfigSchema("msteams");
+		}
+
+		// Unregister channel provider and extensions
 		if (ctx?.unregisterChannelProvider) {
 			ctx.unregisterChannelProvider("msteams");
 		}
