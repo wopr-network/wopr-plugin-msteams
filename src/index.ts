@@ -455,7 +455,9 @@ async function getBotToken(): Promise<string> {
 // Config Schema
 // ============================================================================
 
-const configSchema: ConfigSchema = {
+// Runtime config fields include platform-specific properties (secret, setupFlow)
+// that are not part of the ConfigField type definition but are read by the platform at runtime.
+const configSchema = {
 	title: "Microsoft Teams Integration",
 	description: "Configure Microsoft Teams Bot using Azure Bot Framework",
 	fields: [
@@ -557,13 +559,14 @@ const configSchema: ConfigSchema = {
 			description: "Maximum retry attempts for failed API calls",
 		},
 	],
-};
+} as ConfigSchema;
 
 // ============================================================================
 // Plugin Manifest
 // ============================================================================
 
-const manifest: PluginManifest = {
+// Runtime manifest includes `provides` which is a platform-read field not in the local PluginManifest type.
+const manifest = {
 	name: "@wopr-network/wopr-plugin-msteams",
 	version: "1.0.0",
 	description: "Microsoft Teams integration using Azure Bot Framework",
@@ -593,7 +596,7 @@ const manifest: PluginManifest = {
 		shutdownBehavior: "graceful",
 		shutdownTimeoutMs: 10000,
 	},
-};
+} as PluginManifest;
 
 // ============================================================================
 // Channel Provider
