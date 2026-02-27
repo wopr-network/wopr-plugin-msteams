@@ -10,7 +10,7 @@ importers:
     dependencies:
       '@wopr-network/plugin-types':
         specifier: github:wopr-network/wopr-plugin-types
-        version: https://codeload.github.com/wopr-network/wopr-plugin-types/tar.gz/8294ea560e0ec23990ab53c5a998f6b0c3d86875(zod@3.25.76)
+        version: https://codeload.github.com/wopr-network/wopr-plugin-types/tar.gz/d188c6d4b9e5aa0f06a83f432353d33b5fa23602(zod@3.25.76)
       axios:
         specifier: ^1.13.5
         version: 1.13.5
@@ -26,13 +26,13 @@ importers:
         version: 2.4.4
       '@types/node':
         specifier: ^25.3.0
-        version: 25.3.0
+        version: 25.3.2
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
       vitest:
         specifier: ^4.0.18
-        version: 4.0.18(@types/node@25.3.0)
+        version: 4.0.18(@types/node@25.3.2)
 
 packages:
 
@@ -457,8 +457,8 @@ packages:
   '@types/jsonwebtoken@9.0.6':
     resolution: {integrity: sha512-/5hndP5dCjloafCXns6SZyESp3Ldq7YjH3zwzwczYnjxIT0Fqzk5ROSYVGfFyczIue7IUEj8hkvLbPoLQ18vQw==}
 
-  '@types/node@25.3.0':
-    resolution: {integrity: sha512-4K3bqJpXpqfg2XKGK9bpDTc6xO/xoUP/RBWS7AtRMug6zZFaRekiLzjVtAoZMquxoAbzBvy5nxQ7veS5eYzf8A==}
+  '@types/node@25.3.2':
+    resolution: {integrity: sha512-RpV6r/ij22zRRdyBPcxDeKAzH43phWVKEjL2iksqo1Vz3CuBUrgmPpPhALKiRfU7OMCmeeO9vECBMsV0hMTG8Q==}
 
   '@types/triple-beam@1.3.5':
     resolution: {integrity: sha512-6WaYesThRMCl19iryMYP7/x2OVgCtbIVflDGFpWnb9irXI3UjYE4AzmYuiUKY1AJstGijoY+MgUszMgRxIYTYw==}
@@ -499,11 +499,11 @@ packages:
   '@vitest/utils@4.0.18':
     resolution: {integrity: sha512-msMRKLMVLWygpK3u2Hybgi4MNjcYJvwTb0Ru09+fOyCXIgT5raYP041DRRdiJiI3k/2U6SEbAETB3YtBrUkCFA==}
 
-  '@wopr-network/plugin-types@https://codeload.github.com/wopr-network/wopr-plugin-types/tar.gz/8294ea560e0ec23990ab53c5a998f6b0c3d86875':
-    resolution: {tarball: https://codeload.github.com/wopr-network/wopr-plugin-types/tar.gz/8294ea560e0ec23990ab53c5a998f6b0c3d86875}
-    version: 0.3.1
+  '@wopr-network/plugin-types@https://codeload.github.com/wopr-network/wopr-plugin-types/tar.gz/d188c6d4b9e5aa0f06a83f432353d33b5fa23602':
+    resolution: {tarball: https://codeload.github.com/wopr-network/wopr-plugin-types/tar.gz/d188c6d4b9e5aa0f06a83f432353d33b5fa23602}
+    version: 0.5.0
     peerDependencies:
-      zod: ^3.23.0
+      zod: ^4.3.6
 
   adaptivecards@1.2.3:
     resolution: {integrity: sha512-amQ5OSW3OpIkrxVKLjxVBPk/T49yuOtnqs1z5ZPfZr0+OpTovzmiHbyoAGDIsu5SNYHwOZFp/3LGOnRaALFa/g==}
@@ -1422,9 +1422,9 @@ snapshots:
 
   '@types/jsonwebtoken@9.0.6':
     dependencies:
-      '@types/node': 25.3.0
+      '@types/node': 25.3.2
 
-  '@types/node@25.3.0':
+  '@types/node@25.3.2':
     dependencies:
       undici-types: 7.18.2
 
@@ -1432,7 +1432,7 @@ snapshots:
 
   '@types/ws@6.0.4':
     dependencies:
-      '@types/node': 25.3.0
+      '@types/node': 25.3.2
 
   '@typespec/ts-http-runtime@0.3.3':
     dependencies:
@@ -1451,13 +1451,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.0.3
 
-  '@vitest/mocker@4.0.18(vite@7.3.1(@types/node@25.3.0))':
+  '@vitest/mocker@4.0.18(vite@7.3.1(@types/node@25.3.2))':
     dependencies:
       '@vitest/spy': 4.0.18
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 7.3.1(@types/node@25.3.0)
+      vite: 7.3.1(@types/node@25.3.2)
 
   '@vitest/pretty-format@4.0.18':
     dependencies:
@@ -1481,7 +1481,7 @@ snapshots:
       '@vitest/pretty-format': 4.0.18
       tinyrainbow: 3.0.3
 
-  '@wopr-network/plugin-types@https://codeload.github.com/wopr-network/wopr-plugin-types/tar.gz/8294ea560e0ec23990ab53c5a998f6b0c3d86875(zod@3.25.76)':
+  '@wopr-network/plugin-types@https://codeload.github.com/wopr-network/wopr-plugin-types/tar.gz/d188c6d4b9e5aa0f06a83f432353d33b5fa23602(zod@3.25.76)':
     dependencies:
       zod: 3.25.76
 
@@ -2042,7 +2042,7 @@ snapshots:
 
   uuid@8.3.2: {}
 
-  vite@7.3.1(@types/node@25.3.0):
+  vite@7.3.1(@types/node@25.3.2):
     dependencies:
       esbuild: 0.27.3
       fdir: 6.5.0(picomatch@4.0.3)
@@ -2051,13 +2051,13 @@ snapshots:
       rollup: 4.58.0
       tinyglobby: 0.2.15
     optionalDependencies:
-      '@types/node': 25.3.0
+      '@types/node': 25.3.2
       fsevents: 2.3.3
 
-  vitest@4.0.18(@types/node@25.3.0):
+  vitest@4.0.18(@types/node@25.3.2):
     dependencies:
       '@vitest/expect': 4.0.18
-      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@25.3.0))
+      '@vitest/mocker': 4.0.18(vite@7.3.1(@types/node@25.3.2))
       '@vitest/pretty-format': 4.0.18
       '@vitest/runner': 4.0.18
       '@vitest/snapshot': 4.0.18
@@ -2074,10 +2074,10 @@ snapshots:
       tinyexec: 1.0.2
       tinyglobby: 0.2.15
       tinyrainbow: 3.0.3
-      vite: 7.3.1(@types/node@25.3.0)
+      vite: 7.3.1(@types/node@25.3.2)
       why-is-node-running: 2.3.0
     optionalDependencies:
-      '@types/node': 25.3.0
+      '@types/node': 25.3.2
     transitivePeerDependencies:
       - jiti
       - less
