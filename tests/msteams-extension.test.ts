@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createMsteamsExtension,
-  type MsteamsPluginState,
-} from "../src/msteams-extension";
+import { createMsteamsExtension, type MsteamsPluginState } from "../src/msteams-extension";
 
 function freshState(): MsteamsPluginState {
   return {
@@ -20,9 +17,7 @@ describe("MsteamsExtension WebMCP methods", () => {
   describe("getStatus", () => {
     it("should return offline status when adapter is null", () => {
       const state = freshState();
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       const status = ext.getStatus();
       expect(status).toEqual({
@@ -45,9 +40,7 @@ describe("MsteamsExtension WebMCP methods", () => {
         totalConversations: 1,
       };
 
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       const status = ext.getStatus();
       expect(status.online).toBe(true);
@@ -61,9 +54,7 @@ describe("MsteamsExtension WebMCP methods", () => {
   describe("listTeams", () => {
     it("should return empty array when no teams tracked", () => {
       const state = freshState();
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       expect(ext.listTeams()).toEqual([]);
     });
@@ -77,9 +68,7 @@ describe("MsteamsExtension WebMCP methods", () => {
         ]),
       };
 
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       const teams = ext.listTeams();
       expect(teams).toHaveLength(2);
@@ -91,9 +80,7 @@ describe("MsteamsExtension WebMCP methods", () => {
   describe("listChannels", () => {
     it("should return empty array when no channels tracked", () => {
       const state = freshState();
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       expect(ext.listChannels()).toEqual([]);
     });
@@ -109,16 +96,11 @@ describe("MsteamsExtension WebMCP methods", () => {
               ["ch2", { id: "ch2", name: "announcements", type: "standard" }],
             ]),
           ],
-          [
-            "t2",
-            new Map([["ch3", { id: "ch3", name: "private-ch", type: "private" }]]),
-          ],
+          ["t2", new Map([["ch3", { id: "ch3", name: "private-ch", type: "private" }]])],
         ]),
       };
 
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       const channels = ext.listChannels();
       expect(channels).toHaveLength(3);
@@ -137,16 +119,11 @@ describe("MsteamsExtension WebMCP methods", () => {
               ["ch2", { id: "ch2", name: "dev", type: "standard" }],
             ]),
           ],
-          [
-            "t2",
-            new Map([["ch3", { id: "ch3", name: "marketing", type: "standard" }]]),
-          ],
+          ["t2", new Map([["ch3", { id: "ch3", name: "marketing", type: "standard" }]])],
         ]),
       };
 
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       const channels = ext.listChannels("t1");
       expect(channels).toHaveLength(2);
@@ -157,14 +134,10 @@ describe("MsteamsExtension WebMCP methods", () => {
     it("should return empty array for unknown teamId", () => {
       const state: MsteamsPluginState = {
         ...freshState(),
-        channels: new Map([
-          ["t1", new Map([["ch1", { id: "ch1", name: "general", type: "standard" }]])],
-        ]),
+        channels: new Map([["t1", new Map([["ch1", { id: "ch1", name: "general", type: "standard" }]])]]),
       };
 
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       expect(ext.listChannels("nonexistent")).toEqual([]);
     });
@@ -173,9 +146,7 @@ describe("MsteamsExtension WebMCP methods", () => {
   describe("getMessageStats", () => {
     it("should return zeros when state is fresh", () => {
       const state = freshState();
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       const stats = ext.getMessageStats();
       expect(stats).toEqual({ messagesProcessed: 0, activeConversations: 0 });
@@ -188,9 +159,7 @@ describe("MsteamsExtension WebMCP methods", () => {
         totalConversations: 3,
       };
 
-      const ext = createMsteamsExtension(
-        () => state,
-      );
+      const ext = createMsteamsExtension(() => state);
 
       const stats = ext.getMessageStats();
       expect(stats).toEqual({ messagesProcessed: 25, activeConversations: 3 });

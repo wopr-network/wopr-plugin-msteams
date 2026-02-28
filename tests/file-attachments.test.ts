@@ -15,7 +15,7 @@ const mockAxiosGet = vi.fn();
 const mockAxiosPost = vi.fn();
 
 const mockSendActivity = vi.fn().mockResolvedValue({});
-const mockProcess = vi.fn(async (req: any, res: any, handler: any) => {
+const mockProcess = vi.fn(async (req: any, _res: any, handler: any) => {
   if (req.__activity) {
     await handler({
       activity: req.__activity,
@@ -28,11 +28,13 @@ vi.mock("botbuilder", () => {
   return {
     CloudAdapter: class MockCloudAdapter {
       onTurnError: any;
-      constructor() { this.onTurnError = null; }
+      constructor() {
+        this.onTurnError = null;
+      }
       process = mockProcess;
       continueConversationAsync = vi.fn();
     },
-    ConfigurationBotFrameworkAuthentication: class { constructor(config: any) {} },
+    ConfigurationBotFrameworkAuthentication: class {},
     TurnContext: class {
       static getConversationReference(activity: any) {
         return { conversation: activity.conversation, bot: activity.recipient };
@@ -55,8 +57,15 @@ vi.mock("winston", () => {
   return {
     default: {
       createLogger: vi.fn(() => mockLogger),
-      format: { combine: vi.fn(), timestamp: vi.fn(), errors: vi.fn(), json: vi.fn(), colorize: vi.fn(), simple: vi.fn() },
-      transports: { File: class { constructor() {} }, Console: class { constructor() {} } },
+      format: {
+        combine: vi.fn(),
+        timestamp: vi.fn(),
+        errors: vi.fn(),
+        json: vi.fn(),
+        colorize: vi.fn(),
+        simple: vi.fn(),
+      },
+      transports: { File: class {}, Console: class {} },
     },
   };
 });
@@ -142,9 +151,9 @@ describe("file attachments", () => {
       const result = await downloadAttachment(activity as any);
 
       expect(result).not.toBeNull();
-      expect(result!.filename).toBe("report.pdf");
-      expect(result!.contentType).toBe("application/pdf");
-      expect(result!.content).toEqual(Buffer.from("file content"));
+      expect(result?.filename).toBe("report.pdf");
+      expect(result?.contentType).toBe("application/pdf");
+      expect(result?.content).toEqual(Buffer.from("file content"));
     });
 
     it("returns null for disallowed host", async () => {
@@ -177,9 +186,7 @@ describe("file attachments", () => {
       const { downloadAttachment } = await import("../src/index.js");
 
       const activity = {
-        attachments: [
-          { contentUrl: "https://media.botframework.com/file.txt", name: "file.txt" },
-        ],
+        attachments: [{ contentUrl: "https://media.botframework.com/file.txt", name: "file.txt" }],
       };
 
       const result = await downloadAttachment(activity as any, 5);
@@ -190,9 +197,7 @@ describe("file attachments", () => {
       const { downloadAttachment } = await import("../src/index.js");
 
       const activity = {
-        attachments: [
-          { name: "file.txt", contentType: "text/plain" },
-        ],
+        attachments: [{ name: "file.txt", contentType: "text/plain" }],
       };
 
       const result = await downloadAttachment(activity as any);
@@ -207,14 +212,12 @@ describe("file attachments", () => {
       });
 
       const activity = {
-        attachments: [
-          { contentUrl: "https://media.botframework.com/files/unnamed" },
-        ],
+        attachments: [{ contentUrl: "https://media.botframework.com/files/unnamed" }],
       };
 
       const result = await downloadAttachment(activity as any);
-      expect(result!.filename).toBe("attachment");
-      expect(result!.contentType).toBe("application/octet-stream");
+      expect(result?.filename).toBe("attachment");
+      expect(result?.contentType).toBe("application/octet-stream");
     });
 
     it("downloads from specific attachment index", async () => {
@@ -232,11 +235,8 @@ describe("file attachments", () => {
       };
 
       const result = await downloadAttachment(activity as any, 1);
-      expect(result!.filename).toBe("second.txt");
-      expect(mockAxiosGet).toHaveBeenCalledWith(
-        "https://media.botframework.com/second.txt",
-        expect.any(Object)
-      );
+      expect(result?.filename).toBe("second.txt");
+      expect(mockAxiosGet).toHaveBeenCalledWith("https://media.botframework.com/second.txt", expect.any(Object));
     });
 
     it("passes maxContentLength in request config", async () => {
@@ -247,9 +247,7 @@ describe("file attachments", () => {
       });
 
       const activity = {
-        attachments: [
-          { contentUrl: "https://media.botframework.com/file.pdf", name: "file.pdf" },
-        ],
+        attachments: [{ contentUrl: "https://media.botframework.com/file.pdf", name: "file.pdf" }],
       };
 
       await downloadAttachment(activity as any);
@@ -258,7 +256,7 @@ describe("file attachments", () => {
         "https://media.botframework.com/file.pdf",
         expect.objectContaining({
           maxContentLength: 25 * 1024 * 1024,
-        })
+        }),
       );
     });
   });
@@ -326,10 +324,7 @@ describe("file attachments", () => {
         ],
       };
 
-      await mod.handleWebhook(
-        { __activity: activity },
-        { status: vi.fn().mockReturnThis(), send: vi.fn() }
-      );
+      await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
       // Message with attachment should still be injected
       expect(mockCtx.inject).toHaveBeenCalled();
@@ -364,10 +359,7 @@ describe("file attachments", () => {
       };
 
       // Should not throw and should process normally
-      await mod.handleWebhook(
-        { __activity: activity },
-        { status: vi.fn().mockReturnThis(), send: vi.fn() }
-      );
+      await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
       expect(mockCtx.inject).toHaveBeenCalled();
     });

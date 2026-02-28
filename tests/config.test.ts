@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockContext } from "./mocks/wopr-context.js";
 
 // Track ConfigurationBotFrameworkAuthentication constructor calls
-let lastAuthConfig: any = undefined;
+let lastAuthConfig: any;
 
 // Mock botbuilder
 vi.mock("botbuilder", () => {
@@ -84,12 +84,8 @@ vi.mock("winston", () => {
         simple: vi.fn(),
       },
       transports: {
-        File: class MockFileTransport {
-          constructor() {}
-        },
-        Console: class MockConsoleTransport {
-          constructor() {}
-        },
+        File: class MockFileTransport {},
+        Console: class MockConsoleTransport {},
       },
     },
   };
@@ -115,7 +111,7 @@ describe("config schema", () => {
     const plugin = mod.default;
 
     const mockCtx = createMockContext({});
-    mockCtx.registerConfigSchema = vi.fn((name: string, schema: any) => {
+    mockCtx.registerConfigSchema = vi.fn((_name: string, schema: any) => {
       registeredSchema = schema;
     });
 
@@ -140,15 +136,13 @@ describe("config schema", () => {
     const plugin = mod.default;
 
     const mockCtx = createMockContext({});
-    mockCtx.registerConfigSchema = vi.fn((name: string, schema: any) => {
+    mockCtx.registerConfigSchema = vi.fn((_name: string, schema: any) => {
       registeredSchema = schema;
     });
 
     await plugin.init(mockCtx as any);
 
-    const requiredFields = registeredSchema.fields.filter(
-      (f: any) => f.required
-    );
+    const requiredFields = registeredSchema.fields.filter((f: any) => f.required);
     const requiredNames = requiredFields.map((f: any) => f.name);
     expect(requiredNames).toContain("appId");
     expect(requiredNames).toContain("appPassword");
@@ -160,15 +154,13 @@ describe("config schema", () => {
     const plugin = mod.default;
 
     const mockCtx = createMockContext({});
-    mockCtx.registerConfigSchema = vi.fn((name: string, schema: any) => {
+    mockCtx.registerConfigSchema = vi.fn((_name: string, schema: any) => {
       registeredSchema = schema;
     });
 
     await plugin.init(mockCtx as any);
 
-    const fieldMap = new Map(
-      registeredSchema.fields.map((f: any) => [f.name, f])
-    );
+    const fieldMap = new Map(registeredSchema.fields.map((f: any) => [f.name, f]));
 
     expect((fieldMap.get("webhookPort") as any).default).toBe(3978);
     expect((fieldMap.get("webhookPath") as any).default).toBe("/api/messages");

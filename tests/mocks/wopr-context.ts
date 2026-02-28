@@ -18,9 +18,7 @@ export interface MockWOPRPluginContext {
   };
 }
 
-export function createMockContext(
-  configData: Record<string, any> = {}
-): MockWOPRPluginContext {
+export function createMockContext(configData: Record<string, any> = {}): MockWOPRPluginContext {
   return {
     inject: vi.fn().mockResolvedValue("Mock response"),
     logMessage: vi.fn(),

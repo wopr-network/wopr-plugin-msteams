@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { type AuthContext, type WebMCPRegistry, registerMsteamsTools } from "../src/webmcp-msteams";
+import { type AuthContext, registerMsteamsTools, type WebMCPRegistry } from "../src/webmcp-msteams";
 
 // Mock global fetch
 const mockFetch = vi.fn();
@@ -143,10 +143,7 @@ describe("registerMsteamsTools", () => {
       const tool = getTool(registry, "listMsteamsChannels");
       const result = await tool.handler({ teamId: "team-123" }, {});
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        "/api/plugins/msteams/teams/team-123/channels",
-        expect.any(Object),
-      );
+      expect(mockFetch).toHaveBeenCalledWith("/api/plugins/msteams/teams/team-123/channels", expect.any(Object));
       expect(result).toEqual(channels);
     });
 
@@ -202,9 +199,7 @@ describe("registerMsteamsTools", () => {
 
   describe("error handling", () => {
     it("should throw on non-ok response with error from body", async () => {
-      mockFetch.mockResolvedValue(
-        mockJsonResponse({ error: "MS Teams plugin not loaded" }, false, 404),
-      );
+      mockFetch.mockResolvedValue(mockJsonResponse({ error: "MS Teams plugin not loaded" }, false, 404));
       registerMsteamsTools(registry, API_BASE);
 
       const tool = getTool(registry, "getMsteamsStatus");

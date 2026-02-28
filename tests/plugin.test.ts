@@ -87,12 +87,8 @@ vi.mock("winston", () => {
         simple: vi.fn(),
       },
       transports: {
-        File: class MockFileTransport {
-          constructor() {}
-        },
-        Console: class MockConsoleTransport {
-          constructor() {}
-        },
+        File: class MockFileTransport {},
+        Console: class MockConsoleTransport {},
       },
     },
   };
@@ -147,7 +143,7 @@ describe("MS Teams plugin", () => {
       expect.objectContaining({
         title: "Microsoft Teams Integration",
         fields: expect.any(Array),
-      })
+      }),
     );
     expect(mockAdapterInstance).not.toBeNull();
   });

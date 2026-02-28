@@ -15,10 +15,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockContext } from "./mocks/wopr-context.js";
 
 // Track adapter.process calls to capture the turn handler
-let capturedTurnHandler: ((context: any) => Promise<void>) | null = null;
+let _capturedTurnHandler: ((context: any) => Promise<void>) | null = null;
 const mockSendActivity = vi.fn().mockResolvedValue({});
-const mockProcess = vi.fn(async (req: any, res: any, handler: any) => {
-  capturedTurnHandler = handler;
+const mockProcess = vi.fn(async (req: any, _res: any, handler: any) => {
+  _capturedTurnHandler = handler;
   // Simulate the adapter calling the handler with a mock turn context
   if (req.__activity) {
     await handler({
@@ -90,12 +90,8 @@ vi.mock("winston", () => {
         simple: vi.fn(),
       },
       transports: {
-        File: class MockFileTransport {
-          constructor() {}
-        },
-        Console: class MockConsoleTransport {
-          constructor() {}
-        },
+        File: class MockFileTransport {},
+        Console: class MockConsoleTransport {},
       },
     },
   };
@@ -127,7 +123,7 @@ function makeActivity(overrides: Record<string, any> = {}) {
 describe("message handling", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    capturedTurnHandler = null;
+    _capturedTurnHandler = null;
     delete process.env.MSTEAMS_APP_ID;
     delete process.env.MSTEAMS_APP_PASSWORD;
     delete process.env.MSTEAMS_TENANT_ID;
@@ -162,11 +158,7 @@ describe("message handling", () => {
 
     await mod.handleWebhook(mockReq, mockRes);
 
-    expect(mockProcess).toHaveBeenCalledWith(
-      mockReq,
-      mockRes,
-      expect.any(Function)
-    );
+    expect(mockProcess).toHaveBeenCalledWith(mockReq, mockRes, expect.any(Function));
   });
 
   it("processes valid DM and calls ctx.inject", async () => {
@@ -191,7 +183,7 @@ describe("message handling", () => {
         channel: expect.objectContaining({
           type: "msteams",
         }),
-      })
+      }),
     );
   });
 
