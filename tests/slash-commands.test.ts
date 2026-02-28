@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockContext } from "./mocks/wopr-context.js";
 
 const mockSendActivity = vi.fn().mockResolvedValue({});
-const mockProcess = vi.fn(async (req: any, res: any, handler: any) => {
+const mockProcess = vi.fn(async (req: any, _res: any, handler: any) => {
   if (req.__activity) {
     await handler({
       activity: req.__activity,
@@ -25,11 +25,13 @@ vi.mock("botbuilder", () => {
   return {
     CloudAdapter: class MockCloudAdapter {
       onTurnError: any;
-      constructor() { this.onTurnError = null; }
+      constructor() {
+        this.onTurnError = null;
+      }
       process = mockProcess;
       continueConversationAsync = vi.fn();
     },
-    ConfigurationBotFrameworkAuthentication: class { constructor(config: any) {} },
+    ConfigurationBotFrameworkAuthentication: class {},
     TurnContext: class {
       static getConversationReference(activity: any) {
         return { conversation: activity.conversation, bot: activity.recipient };
@@ -52,8 +54,15 @@ vi.mock("winston", () => {
   return {
     default: {
       createLogger: vi.fn(() => mockLogger),
-      format: { combine: vi.fn(), timestamp: vi.fn(), errors: vi.fn(), json: vi.fn(), colorize: vi.fn(), simple: vi.fn() },
-      transports: { File: class { constructor() {} }, Console: class { constructor() {} } },
+      format: {
+        combine: vi.fn(),
+        timestamp: vi.fn(),
+        errors: vi.fn(),
+        json: vi.fn(),
+        colorize: vi.fn(),
+        simple: vi.fn(),
+      },
+      transports: { File: class {}, Console: class {} },
     },
   };
 });
@@ -127,15 +136,10 @@ describe("slash commands", () => {
 
   it("dispatches slash command when text matches /command", async () => {
     const handler = vi.fn().mockResolvedValue("Status: OK");
-    const { mod } = await initWithCommands([
-      { name: "status", description: "Show status", handler },
-    ]);
+    const { mod } = await initWithCommands([{ name: "status", description: "Show status", handler }]);
 
     const activity = makeActivity({ text: "/status" });
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -143,26 +147,21 @@ describe("slash commands", () => {
         sender: "user-1",
         channel: "msteams:conv-1",
         channelType: "msteams",
-      })
+      }),
     );
   });
 
   it("passes args to command handler", async () => {
     const handler = vi.fn().mockResolvedValue("Help text");
-    const { mod } = await initWithCommands([
-      { name: "help", description: "Get help", handler },
-    ]);
+    const { mod } = await initWithCommands([{ name: "help", description: "Get help", handler }]);
 
     const activity = makeActivity({ text: "/help deploy commands" });
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     expect(handler).toHaveBeenCalledWith(
       expect.objectContaining({
         args: ["deploy", "commands"],
-      })
+      }),
     );
   });
 
@@ -170,30 +169,20 @@ describe("slash commands", () => {
     const handler = vi.fn().mockImplementation(async (ctx: any) => {
       await ctx.reply("All systems operational");
     });
-    const { mod } = await initWithCommands([
-      { name: "status", description: "Show status", handler },
-    ]);
+    const { mod } = await initWithCommands([{ name: "status", description: "Show status", handler }]);
 
     const activity = makeActivity({ text: "/status" });
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     expect(mockSendActivity).toHaveBeenCalled();
   });
 
   it("passes non-command text to inject flow", async () => {
     const handler = vi.fn().mockResolvedValue("done");
-    const { mod, mockCtx } = await initWithCommands([
-      { name: "status", description: "Show status", handler },
-    ]);
+    const { mod, mockCtx } = await initWithCommands([{ name: "status", description: "Show status", handler }]);
 
     const activity = makeActivity({ text: "just chatting" });
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     // Should NOT call the command handler
     expect(handler).not.toHaveBeenCalled();
@@ -203,28 +192,21 @@ describe("slash commands", () => {
 
   it("sends error message when command handler throws", async () => {
     const handler = vi.fn().mockRejectedValue(new Error("boom"));
-    const { mod } = await initWithCommands([
-      { name: "fail", description: "Will fail", handler },
-    ]);
+    const { mod } = await initWithCommands([{ name: "fail", description: "Will fail", handler }]);
 
     const activity = makeActivity({ text: "/fail" });
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     expect(mockSendActivity).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining("Command /fail failed"),
-      })
+      }),
     );
   });
 
   it("unregisters commands correctly", async () => {
     const handler = vi.fn().mockResolvedValue("done");
-    await initWithCommands([
-      { name: "status", description: "Show status", handler },
-    ]);
+    await initWithCommands([{ name: "status", description: "Show status", handler }]);
 
     expect(capturedProvider.getCommands()).toHaveLength(1);
     capturedProvider.unregisterCommand("status");
@@ -233,15 +215,10 @@ describe("slash commands", () => {
 
   it("does not match partial command names", async () => {
     const handler = vi.fn().mockResolvedValue("done");
-    const { mod, mockCtx } = await initWithCommands([
-      { name: "status", description: "Show status", handler },
-    ]);
+    const { mod, mockCtx } = await initWithCommands([{ name: "status", description: "Show status", handler }]);
 
     const activity = makeActivity({ text: "/statusbar check" });
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     // /statusbar does not match /status, so it should go to inject
     expect(handler).not.toHaveBeenCalled();

@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockContext } from "./mocks/wopr-context.js";
 
 const mockSendActivity = vi.fn().mockResolvedValue({});
-const mockProcess = vi.fn(async (req: any, res: any, handler: any) => {
+const mockProcess = vi.fn(async (req: any, _res: any, handler: any) => {
   if (req.__activity) {
     await handler({
       activity: req.__activity,
@@ -23,11 +23,13 @@ vi.mock("botbuilder", () => {
   return {
     CloudAdapter: class MockCloudAdapter {
       onTurnError: any;
-      constructor() { this.onTurnError = null; }
+      constructor() {
+        this.onTurnError = null;
+      }
       process = mockProcess;
       continueConversationAsync = vi.fn();
     },
-    ConfigurationBotFrameworkAuthentication: class { constructor(config: any) {} },
+    ConfigurationBotFrameworkAuthentication: class {},
     TurnContext: class {
       static getConversationReference(activity: any) {
         return {
@@ -59,8 +61,15 @@ vi.mock("winston", () => {
   return {
     default: {
       createLogger: vi.fn(() => mockLogger),
-      format: { combine: vi.fn(), timestamp: vi.fn(), errors: vi.fn(), json: vi.fn(), colorize: vi.fn(), simple: vi.fn() },
-      transports: { File: class { constructor() {} }, Console: class { constructor() {} } },
+      format: {
+        combine: vi.fn(),
+        timestamp: vi.fn(),
+        errors: vi.fn(),
+        json: vi.fn(),
+        colorize: vi.fn(),
+        simple: vi.fn(),
+      },
+      transports: { File: class {}, Console: class {} },
     },
   };
 });
@@ -109,15 +118,12 @@ describe("thread/reply support", () => {
     await plugin.init(mockCtx as any);
 
     const activity = makeActivity({ id: "msg-456" });
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     expect(mockSendActivity).toHaveBeenCalledWith(
       expect.objectContaining({
         replyToId: "msg-456",
-      })
+      }),
     );
   });
 
@@ -137,10 +143,7 @@ describe("thread/reply support", () => {
     await plugin.init(mockCtx as any);
 
     const activity = makeActivity({ id: "msg-789" });
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     const sentActivity = mockSendActivity.mock.calls[0][0];
     expect(sentActivity.replyToId).toBeUndefined();
@@ -170,10 +173,7 @@ describe("thread/reply support", () => {
       conversation: { id: "convo-abc", conversationType: "personal", name: "Chat" },
     });
 
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     // The extension should have stored the conversation reference
     const refs = capturedExtension.getConversationReferences();
@@ -200,10 +200,7 @@ describe("thread/reply support", () => {
 
     // Send a message to populate references
     const activity = makeActivity();
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     // References should exist
     expect(capturedExtension.getConversationReferences().size).toBeGreaterThan(0);

@@ -24,7 +24,7 @@ const mockMessageFactoryAttachment = vi.fn((attachment: any) => ({
 }));
 
 const mockSendActivity = vi.fn().mockResolvedValue({});
-const mockProcess = vi.fn(async (req: any, res: any, handler: any) => {
+const mockProcess = vi.fn(async (req: any, _res: any, handler: any) => {
   if (req.__activity) {
     await handler({
       activity: req.__activity,
@@ -43,9 +43,7 @@ vi.mock("botbuilder", () => {
       process = mockProcess;
       continueConversationAsync = vi.fn();
     },
-    ConfigurationBotFrameworkAuthentication: class MockAuth {
-      constructor(config: any) {}
-    },
+    ConfigurationBotFrameworkAuthentication: class MockAuth {},
     TurnContext: class MockTurnContext {
       static getConversationReference(activity: any) {
         return { conversation: activity.conversation, bot: activity.recipient };
@@ -65,10 +63,17 @@ vi.mock("winston", () => {
   return {
     default: {
       createLogger: vi.fn(() => mockLogger),
-      format: { combine: vi.fn(), timestamp: vi.fn(), errors: vi.fn(), json: vi.fn(), colorize: vi.fn(), simple: vi.fn() },
+      format: {
+        combine: vi.fn(),
+        timestamp: vi.fn(),
+        errors: vi.fn(),
+        json: vi.fn(),
+        colorize: vi.fn(),
+        simple: vi.fn(),
+      },
       transports: {
-        File: class { constructor() {} },
-        Console: class { constructor() {} },
+        File: class {},
+        Console: class {},
       },
     },
   };
@@ -105,7 +110,7 @@ describe("adaptive cards", () => {
             wrap: true,
           }),
         ]),
-      })
+      }),
     );
   });
 
@@ -120,13 +125,13 @@ describe("adaptive cards", () => {
         text: "Test Title",
         size: "Large",
         weight: "Bolder",
-      })
+      }),
     );
     expect(cardArg.body[1]).toEqual(
       expect.objectContaining({
         type: "TextBlock",
         text: "Content",
-      })
+      }),
     );
   });
 
@@ -141,7 +146,7 @@ describe("adaptive cards", () => {
         type: "Image",
         url: "https://example.com/img.png",
         size: "Auto",
-      })
+      }),
     );
   });
 
@@ -149,30 +154,22 @@ describe("adaptive cards", () => {
     const { buildAdaptiveCard } = await import("../src/index.js");
     buildAdaptiveCard({
       body: "With action",
-      actions: [
-        { type: "Action.OpenUrl", title: "Visit", url: "https://example.com" },
-      ],
+      actions: [{ type: "Action.OpenUrl", title: "Visit", url: "https://example.com" }],
     });
 
     const cardArg = mockCardFactoryAdaptiveCard.mock.calls[0][0];
-    expect(cardArg.actions).toEqual([
-      { type: "Action.OpenUrl", title: "Visit", url: "https://example.com" },
-    ]);
+    expect(cardArg.actions).toEqual([{ type: "Action.OpenUrl", title: "Visit", url: "https://example.com" }]);
   });
 
   it("buildAdaptiveCard includes Submit actions", async () => {
     const { buildAdaptiveCard } = await import("../src/index.js");
     buildAdaptiveCard({
       body: "With submit",
-      actions: [
-        { type: "Action.Submit", title: "Confirm", data: { action: "confirm" } },
-      ],
+      actions: [{ type: "Action.Submit", title: "Confirm", data: { action: "confirm" } }],
     });
 
     const cardArg = mockCardFactoryAdaptiveCard.mock.calls[0][0];
-    expect(cardArg.actions).toEqual([
-      { type: "Action.Submit", title: "Confirm", data: { action: "confirm" } },
-    ]);
+    expect(cardArg.actions).toEqual([{ type: "Action.Submit", title: "Confirm", data: { action: "confirm" } }]);
   });
 
   it("buildAdaptiveCard omits actions when not provided", async () => {
@@ -205,10 +202,7 @@ describe("adaptive cards", () => {
       conversation: { id: "conv-1", conversationType: "personal", name: "Chat" },
     };
 
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     // Should have called CardFactory.adaptiveCard for the response
     expect(mockCardFactoryAdaptiveCard).toHaveBeenCalled();
@@ -237,10 +231,7 @@ describe("adaptive cards", () => {
       conversation: { id: "conv-1", conversationType: "personal", name: "Chat" },
     };
 
-    await mod.handleWebhook(
-      { __activity: activity },
-      { status: vi.fn().mockReturnThis(), send: vi.fn() }
-    );
+    await mod.handleWebhook({ __activity: activity }, { status: vi.fn().mockReturnThis(), send: vi.fn() });
 
     // sendActivity should be called with plain text (no CardFactory)
     expect(mockSendActivity).toHaveBeenCalled();

@@ -15,10 +15,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("botbuilder", () => {
   return {
-    CloudAdapter: class { onTurnError: any; constructor() { this.onTurnError = null; } process = vi.fn(); continueConversationAsync = vi.fn(); },
-    ConfigurationBotFrameworkAuthentication: class { constructor(config: any) {} },
-    TurnContext: class { static getConversationReference() { return {}; } },
-    CardFactory: { adaptiveCard: vi.fn((card: any) => ({ contentType: "application/vnd.microsoft.card.adaptive", content: card })) },
+    CloudAdapter: class {
+      onTurnError: any;
+      constructor() {
+        this.onTurnError = null;
+      }
+      process = vi.fn();
+      continueConversationAsync = vi.fn();
+    },
+    ConfigurationBotFrameworkAuthentication: class {},
+    TurnContext: class {
+      static getConversationReference() {
+        return {};
+      }
+    },
+    CardFactory: {
+      adaptiveCard: vi.fn((card: any) => ({ contentType: "application/vnd.microsoft.card.adaptive", content: card })),
+    },
     MessageFactory: { attachment: vi.fn((a: any) => ({ type: "message", attachments: [a] })) },
   };
 });
@@ -28,8 +41,15 @@ vi.mock("winston", () => {
   return {
     default: {
       createLogger: vi.fn(() => mockLogger),
-      format: { combine: vi.fn(), timestamp: vi.fn(), errors: vi.fn(), json: vi.fn(), colorize: vi.fn(), simple: vi.fn() },
-      transports: { File: class { constructor() {} }, Console: class { constructor() {} } },
+      format: {
+        combine: vi.fn(),
+        timestamp: vi.fn(),
+        errors: vi.fn(),
+        json: vi.fn(),
+        colorize: vi.fn(),
+        simple: vi.fn(),
+      },
+      transports: { File: class {}, Console: class {} },
     },
   };
 });
@@ -61,7 +81,8 @@ describe("withRetry", () => {
 
   it("retries on 429 status and succeeds", async () => {
     const { withRetry } = await import("../src/index.js");
-    const fn = vi.fn()
+    const fn = vi
+      .fn()
       .mockRejectedValueOnce({ response: { status: 429, headers: {} } })
       .mockResolvedValueOnce("success");
 
@@ -73,7 +94,8 @@ describe("withRetry", () => {
 
   it("retries on 500 status and succeeds", async () => {
     const { withRetry } = await import("../src/index.js");
-    const fn = vi.fn()
+    const fn = vi
+      .fn()
       .mockRejectedValueOnce({ response: { status: 500, headers: {} } })
       .mockResolvedValueOnce("recovered");
 
@@ -85,7 +107,8 @@ describe("withRetry", () => {
 
   it("retries on 503 status", async () => {
     const { withRetry } = await import("../src/index.js");
-    const fn = vi.fn()
+    const fn = vi
+      .fn()
       .mockRejectedValueOnce({ response: { status: 503, headers: {} } })
       .mockResolvedValueOnce("ok");
 
@@ -153,9 +176,7 @@ describe("withRetry", () => {
 
   it("handles errors with statusCode property", async () => {
     const { withRetry } = await import("../src/index.js");
-    const fn = vi.fn()
-      .mockRejectedValueOnce({ statusCode: 502 })
-      .mockResolvedValueOnce("ok");
+    const fn = vi.fn().mockRejectedValueOnce({ statusCode: 502 }).mockResolvedValueOnce("ok");
 
     const result = await withRetry(fn, { maxRetries: 2, baseDelayMs: 10 });
 
