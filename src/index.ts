@@ -88,7 +88,6 @@ let ctx: WOPRPluginContext | null = null;
 let config: MSTeamsConfig = {};
 let agentIdentity: AgentIdentity = { name: "WOPR", emoji: "\u{1F440}" };
 let adapter: CloudAdapter | null = null;
-let _isShuttingDown = false;
 let logger: winston.Logger;
 
 const cleanups: Array<() => void> = [];
