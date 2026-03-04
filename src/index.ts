@@ -12,29 +12,28 @@
 import path from "node:path";
 import axios from "axios";
 import {
-	type Activity,
-	CardFactory,
-	CloudAdapter,
-	ConfigurationBotFrameworkAuthentication,
-	type ConversationReference,
-	MessageFactory,
-	TurnContext,
+  type Activity,
+  CardFactory,
+  CloudAdapter,
+  ConfigurationBotFrameworkAuthentication,
+  type ConversationReference,
+  MessageFactory,
+  TurnContext,
 } from "botbuilder";
 import winston from "winston";
-import {
-	createMsteamsExtension,
-	type MsteamsPluginState,
-} from "./msteams-extension";
+import { createMsteamsExtension, type MsteamsPluginState } from "./msteams-extension";
 import type {
-	AgentIdentity,
-	ChannelCommand,
-	ChannelMessageParser,
-	ChannelProvider,
-	ChannelRef,
-	ConfigSchema,
-	PluginManifest,
-	WOPRPlugin,
-	WOPRPluginContext,
+  AgentIdentity,
+  ChannelCommand,
+  ChannelMessageParser,
+  ChannelNotificationCallbacks,
+  ChannelNotificationPayload,
+  ChannelProvider,
+  ChannelRef,
+  ConfigSchema,
+  PluginManifest,
+  WOPRPlugin,
+  WOPRPluginContext,
 } from "./types.js";
 
 // ============================================================================
@@ -89,11 +88,15 @@ let config: MSTeamsConfig = {};
 let agentIdentity: AgentIdentity = { name: "WOPR", emoji: "\u{1F440}" };
 let adapter: CloudAdapter | null = null;
 let logger: winston.Logger;
+let isShuttingDown = false;
 
 const cleanups: Array<() => void> = [];
 
 // Store conversation references for proactive messaging
 const conversationReferences: Map<string, Partial<ConversationReference>> = new Map();
+
+// Map from activity ID -> notification callbacks (for Action.Submit handling)
+const pendingCallbacks: Map<string, ChannelNotificationCallbacks> = new Map();
 
 // Plugin runtime state for WebMCP extension
 let pluginState: MsteamsPluginState = {
@@ -172,31 +175,31 @@ export async function withRetry<T>(
   const maxRetries = opts?.maxRetries ?? config.maxRetries ?? 3;
   const baseDelayMs = opts?.baseDelayMs ?? config.retryBaseDelayMs ?? 1000;
 
-	let lastError: unknown;
-	for (let attempt = 0; attempt <= maxRetries; attempt++) {
-		try {
-			return await fn();
-		} catch (error: unknown) {
-			lastError = error;
-			const errObj = error as {
-				response?: { status?: number; headers?: Record<string, string> };
-				statusCode?: number;
-			};
-			const status = errObj?.response?.status ?? errObj?.statusCode ?? 0;
-			const isRetryable = status === 429 || (status >= 500 && status < 600);
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: unknown) {
+      lastError = error;
+      const errObj = error as {
+        response?: { status?: number; headers?: Record<string, string> };
+        statusCode?: number;
+      };
+      const status = errObj?.response?.status ?? errObj?.statusCode ?? 0;
+      const isRetryable = status === 429 || (status >= 500 && status < 600);
 
-			if (!isRetryable || attempt === maxRetries) {
-				throw error;
-			}
+      if (!isRetryable || attempt === maxRetries) {
+        throw error;
+      }
 
-			// Exponential backoff with full jitter
-			const maxDelay = baseDelayMs * 2 ** attempt;
-			const delay = Math.floor(Math.random() * maxDelay);
+      // Exponential backoff with full jitter
+      const maxDelay = baseDelayMs * 2 ** attempt;
+      const delay = Math.floor(Math.random() * maxDelay);
 
-			// Use Retry-After header if present (seconds or HTTP date per RFC 7231)
-			const retryAfter = errObj?.response?.headers?.["retry-after"];
-			const retryAfterMs = parseRetryAfter(retryAfter);
-			const actualDelay = Math.max(delay, retryAfterMs);
+      // Use Retry-After header if present (seconds or HTTP date per RFC 7231)
+      const retryAfter = errObj?.response?.headers?.["retry-after"];
+      const retryAfterMs = parseRetryAfter(retryAfter);
+      const actualDelay = Math.max(delay, retryAfterMs);
 
       logger?.debug(`Retry attempt ${attempt + 1}/${maxRetries} after ${actualDelay}ms (status: ${status})`);
       await new Promise((resolve) => setTimeout(resolve, actualDelay));
@@ -213,10 +216,8 @@ export async function withRetry<T>(
  * Build an Adaptive Card JSON payload from options.
  * Returns a Bot Framework Attachment.
  */
-export function buildAdaptiveCard(
-	options: AdaptiveCardOptions,
-): import("botbuilder").Attachment {
-	const body: Array<Record<string, unknown>> = [];
+export function buildAdaptiveCard(options: AdaptiveCardOptions): import("botbuilder").Attachment {
+  const body: Array<Record<string, unknown>> = [];
 
   if (options.title) {
     body.push({
@@ -242,12 +243,12 @@ export function buildAdaptiveCard(
     });
   }
 
-	const card: Record<string, unknown> = {
-		type: "AdaptiveCard",
-		$schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-		version: "1.4",
-		body,
-	};
+  const card: Record<string, unknown> = {
+    type: "AdaptiveCard",
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    version: "1.4",
+    body,
+  };
 
   if (options.actions && options.actions.length > 0) {
     card.actions = options.actions.map((action) => {
@@ -375,32 +376,28 @@ export function isHttpsUrl(url: string): boolean {
  * Build a file info card for sending a file to the user.
  * In Teams, files are sent via consent/info cards.
  */
-export function buildFileCard(
-	filename: string,
-	contentUrl: string,
-	fileSize?: number,
-): Record<string, unknown> {
-	if (contentUrl && !isHttpsUrl(contentUrl)) {
-		throw new Error(`contentUrl must be an HTTPS URL, got: ${contentUrl}`);
-	}
+export function buildFileCard(filename: string, contentUrl: string, fileSize?: number): Record<string, unknown> {
+  if (contentUrl && !isHttpsUrl(contentUrl)) {
+    throw new Error(`contentUrl must be an HTTPS URL, got: ${contentUrl}`);
+  }
 
-	const content: Record<string, unknown> = {
-		fileType: filename.split(".").pop() || "unknown",
-		uniqueId: `file-${Date.now()}`,
-	};
-	if (fileSize !== undefined) {
-		content.fileSize = fileSize;
-	}
+  const content: Record<string, unknown> = {
+    fileType: filename.split(".").pop() || "unknown",
+    uniqueId: `file-${Date.now()}`,
+  };
+  if (fileSize !== undefined) {
+    content.fileSize = fileSize;
+  }
 
-	const card: Record<string, unknown> = {
-		contentType: "application/vnd.microsoft.teams.card.file.info",
-		name: filename,
-		content,
-	};
-	if (contentUrl) {
-		card.contentUrl = contentUrl;
-	}
-	return card;
+  const card: Record<string, unknown> = {
+    contentType: "application/vnd.microsoft.teams.card.file.info",
+    name: filename,
+    content,
+  };
+  if (contentUrl) {
+    card.contentUrl = contentUrl;
+  }
+  return card;
 }
 
 /** Get a bot token for authenticated API calls. */
@@ -424,11 +421,11 @@ async function getBotToken(): Promise<string> {
     { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
   );
 
-	const token = tokenResponse.data.access_token;
-	if (!token) {
-		throw new Error("Bot token response did not contain an access_token.");
-	}
-	return token;
+  const token = tokenResponse.data.access_token;
+  if (!token) {
+    throw new Error("Bot token response did not contain an access_token.");
+  }
+  return token;
 }
 
 // ============================================================================
@@ -438,107 +435,107 @@ async function getBotToken(): Promise<string> {
 // Runtime config fields include platform-specific properties (secret, setupFlow)
 // that are not part of the ConfigField type definition but are read by the platform at runtime.
 const configSchema = {
-	title: "Microsoft Teams Integration",
-	description: "Configure Microsoft Teams Bot using Azure Bot Framework",
-	fields: [
-		{
-			name: "appId",
-			type: "text",
-			label: "App ID",
-			placeholder: "00000000-0000-0000-0000-000000000000",
-			required: true,
-			description: "Azure Bot App ID",
-			setupFlow: "paste",
-		},
-		{
-			name: "appPassword",
-			type: "password",
-			label: "App Password",
-			placeholder: "secret",
-			required: true,
-			description: "Azure Bot App Password (Client Secret)",
-			secret: true,
-			setupFlow: "paste",
-		},
-		{
-			name: "tenantId",
-			type: "text",
-			label: "Tenant ID",
-			placeholder: "00000000-0000-0000-0000-000000000000",
-			required: true,
-			description: "Azure AD Tenant ID",
-			setupFlow: "paste",
-		},
-		{
-			name: "webhookPort",
-			type: "number",
-			label: "Webhook Port",
-			placeholder: "3978",
-			default: 3978,
-			description: "Port for webhook server",
-		},
-		{
-			name: "webhookPath",
-			type: "text",
-			label: "Webhook Path",
-			placeholder: "/api/messages",
-			default: "/api/messages",
-			description: "Path for webhook endpoint",
-		},
-		{
-			name: "dmPolicy",
-			type: "select",
-			label: "DM Policy",
-			placeholder: "pairing",
-			default: "pairing",
-			description: "How to handle direct messages",
-		},
-		{
-			name: "allowFrom",
-			type: "array",
-			label: "Allowed Users",
-			placeholder: "user-id-1, user-id-2",
-			description: "Allowed user IDs for DMs",
-		},
-		{
-			name: "groupPolicy",
-			type: "select",
-			label: "Group Policy",
-			placeholder: "allowlist",
-			default: "allowlist",
-			description: "How to handle channel/group messages",
-		},
-		{
-			name: "requireMention",
-			type: "boolean",
-			label: "Require Mention",
-			default: true,
-			description: "Require @mention in channels",
-		},
-		{
-			name: "replyStyle",
-			type: "select",
-			label: "Reply Style",
-			placeholder: "thread",
-			default: "thread",
-			description: "Reply in thread or top-level",
-		},
-		{
-			name: "useAdaptiveCards",
-			type: "boolean",
-			label: "Use Adaptive Cards",
-			default: true,
-			description: "Send rich responses using Adaptive Cards",
-		},
-		{
-			name: "maxRetries",
-			type: "number",
-			label: "Max Retries",
-			placeholder: "3",
-			default: 3,
-			description: "Maximum retry attempts for failed API calls",
-		},
-	],
+  title: "Microsoft Teams Integration",
+  description: "Configure Microsoft Teams Bot using Azure Bot Framework",
+  fields: [
+    {
+      name: "appId",
+      type: "text",
+      label: "App ID",
+      placeholder: "00000000-0000-0000-0000-000000000000",
+      required: true,
+      description: "Azure Bot App ID",
+      setupFlow: "paste",
+    },
+    {
+      name: "appPassword",
+      type: "password",
+      label: "App Password",
+      placeholder: "secret",
+      required: true,
+      description: "Azure Bot App Password (Client Secret)",
+      secret: true,
+      setupFlow: "paste",
+    },
+    {
+      name: "tenantId",
+      type: "text",
+      label: "Tenant ID",
+      placeholder: "00000000-0000-0000-0000-000000000000",
+      required: true,
+      description: "Azure AD Tenant ID",
+      setupFlow: "paste",
+    },
+    {
+      name: "webhookPort",
+      type: "number",
+      label: "Webhook Port",
+      placeholder: "3978",
+      default: 3978,
+      description: "Port for webhook server",
+    },
+    {
+      name: "webhookPath",
+      type: "text",
+      label: "Webhook Path",
+      placeholder: "/api/messages",
+      default: "/api/messages",
+      description: "Path for webhook endpoint",
+    },
+    {
+      name: "dmPolicy",
+      type: "select",
+      label: "DM Policy",
+      placeholder: "pairing",
+      default: "pairing",
+      description: "How to handle direct messages",
+    },
+    {
+      name: "allowFrom",
+      type: "array",
+      label: "Allowed Users",
+      placeholder: "user-id-1, user-id-2",
+      description: "Allowed user IDs for DMs",
+    },
+    {
+      name: "groupPolicy",
+      type: "select",
+      label: "Group Policy",
+      placeholder: "allowlist",
+      default: "allowlist",
+      description: "How to handle channel/group messages",
+    },
+    {
+      name: "requireMention",
+      type: "boolean",
+      label: "Require Mention",
+      default: true,
+      description: "Require @mention in channels",
+    },
+    {
+      name: "replyStyle",
+      type: "select",
+      label: "Reply Style",
+      placeholder: "thread",
+      default: "thread",
+      description: "Reply in thread or top-level",
+    },
+    {
+      name: "useAdaptiveCards",
+      type: "boolean",
+      label: "Use Adaptive Cards",
+      default: true,
+      description: "Send rich responses using Adaptive Cards",
+    },
+    {
+      name: "maxRetries",
+      type: "number",
+      label: "Max Retries",
+      placeholder: "3",
+      default: 3,
+      description: "Maximum retry attempts for failed API calls",
+    },
+  ],
 } as ConfigSchema;
 
 // ============================================================================
@@ -547,35 +544,28 @@ const configSchema = {
 
 // Runtime manifest includes `provides` which is a platform-read field not in the local PluginManifest type.
 const manifest = {
-	name: "@wopr-network/wopr-plugin-msteams",
-	version: "1.0.0",
-	description: "Microsoft Teams integration using Azure Bot Framework",
-	author: "WOPR Network",
-	license: "MIT",
-	capabilities: ["channel"],
-	category: "channel",
-	tags: [
-		"msteams",
-		"teams",
-		"azure",
-		"bot-framework",
-		"chat",
-		"adaptive-cards",
-	],
-	icon: "\u{1F7E6}",
-	requires: {
-		env: ["MSTEAMS_APP_ID", "MSTEAMS_APP_PASSWORD", "MSTEAMS_TENANT_ID"],
-		network: {
-			outbound: true,
-			inbound: true,
-		},
-	},
-	provides: ["channel"],
-	configSchema,
-	lifecycle: {
-		shutdownBehavior: "graceful",
-		shutdownTimeoutMs: 10000,
-	},
+  name: "@wopr-network/wopr-plugin-msteams",
+  version: "1.0.0",
+  description: "Microsoft Teams integration using Azure Bot Framework",
+  author: "WOPR Network",
+  license: "MIT",
+  capabilities: ["channel"],
+  category: "channel",
+  tags: ["msteams", "teams", "azure", "bot-framework", "chat", "adaptive-cards"],
+  icon: "\u{1F7E6}",
+  requires: {
+    env: ["MSTEAMS_APP_ID", "MSTEAMS_APP_PASSWORD", "MSTEAMS_TENANT_ID"],
+    network: {
+      outbound: true,
+      inbound: true,
+    },
+  },
+  provides: ["channel"],
+  configSchema,
+  lifecycle: {
+    shutdownBehavior: "graceful",
+    shutdownTimeoutMs: 10000,
+  },
 } as PluginManifest;
 
 // ============================================================================
@@ -621,24 +611,70 @@ const msteamsChannelProvider: ChannelProvider = {
       return;
     }
 
-		await withRetry(async () => {
-			await adapter?.continueConversationAsync(
-				resolveCredentials()?.appId || "",
-				ref as ConversationReference,
-				async (turnContext: TurnContext) => {
-					if (config.useAdaptiveCards !== false) {
-						const card = buildAdaptiveCard({ body: content });
-						await turnContext.sendActivity({ attachments: [card] });
-					} else {
-						await turnContext.sendActivity(content);
-					}
-				},
-			);
-		});
-	},
+    await withRetry(async () => {
+      await adapter?.continueConversationAsync(
+        resolveCredentials()?.appId || "",
+        ref as ConversationReference,
+        async (turnContext: TurnContext) => {
+          if (config.useAdaptiveCards !== false) {
+            const card = buildAdaptiveCard({ body: content });
+            await turnContext.sendActivity({ attachments: [card] });
+          } else {
+            await turnContext.sendActivity(content);
+          }
+        },
+      );
+    });
+  },
 
   getBotUsername(): string {
     return agentIdentity.name || "WOPR";
+  },
+
+  async sendNotification(
+    channelId: string,
+    payload: ChannelNotificationPayload,
+    callbacks: ChannelNotificationCallbacks,
+  ): Promise<void> {
+    if (payload.type !== "friend-request") return;
+
+    // channelId is "msteams:<conversationId>" — strip prefix
+    const convId = channelId.startsWith("msteams:") ? channelId.slice(8) : channelId;
+    const ref = conversationReferences.get(convId);
+    if (!ref || !adapter) {
+      logger?.info(`No conversation reference for ${convId}, cannot send notification`);
+      return;
+    }
+
+    const fromName = payload.from || "Someone";
+    const card = buildAdaptiveCard({
+      body: `**${fromName}** wants to connect with you.`,
+      actions: [
+        {
+          type: "Action.Submit",
+          title: "Accept",
+          data: { action: "friend-request-accept", channelId },
+        },
+        {
+          type: "Action.Submit",
+          title: "Deny",
+          data: { action: "friend-request-deny", channelId },
+        },
+      ],
+    });
+
+    await withRetry(async () => {
+      await adapter?.continueConversationAsync(
+        resolveCredentials()?.appId || "",
+        ref as ConversationReference,
+        async (turnContext: TurnContext) => {
+          const response = await turnContext.sendActivity({ attachments: [card] });
+          if (response?.id) {
+            addBoundedMap(pendingCallbacks, response.id, callbacks);
+          }
+        },
+      );
+    });
   },
 };
 
@@ -667,16 +703,16 @@ function matchSlashCommand(text: string): { command: ChannelCommand; args: strin
 // ============================================================================
 
 async function refreshIdentity(): Promise<void> {
-	if (!ctx) return;
-	try {
-		const identity = await ctx.getAgentIdentity();
-		if (identity) {
-			agentIdentity = { ...agentIdentity, ...identity };
-			logger.info("Identity refreshed:", agentIdentity.name);
-		}
-	} catch (error: unknown) {
-		logger.warn("Failed to refresh identity:", String(error));
-	}
+  if (!ctx) return;
+  try {
+    const identity = await ctx.getAgentIdentity();
+    if (identity) {
+      agentIdentity = { ...agentIdentity, ...identity };
+      logger.info("Identity refreshed:", agentIdentity.name);
+    }
+  } catch (error: unknown) {
+    logger.warn("Failed to refresh identity:", String(error));
+  }
 }
 
 function resolveCredentials(): {
@@ -777,6 +813,35 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
   // Store conversation reference for proactive messaging
   storeConversationReference(activity);
 
+  // Handle Action.Submit invoke from Adaptive Card buttons
+  if (activity.type === "invoke") {
+    const value = activity.value as { action?: string; channelId?: string } | undefined;
+    const action = value?.action;
+    const replyToId = activity.replyToId;
+
+    if (replyToId && action) {
+      const cbs = pendingCallbacks.get(replyToId);
+      if (cbs) {
+        try {
+          if (action === "friend-request-accept" && cbs.onAccept) {
+            await cbs.onAccept();
+          } else if (action === "friend-request-deny" && cbs.onDeny) {
+            await cbs.onDeny();
+          }
+        } finally {
+          pendingCallbacks.delete(replyToId);
+        }
+
+        await turnContext.sendActivity({
+          type: "invokeResponse",
+          value: { status: 200, body: {} },
+        } as Activity);
+        return;
+      }
+    }
+    return;
+  }
+
   // Skip non-message activities
   if (activity.type !== "message") return;
 
@@ -822,37 +887,37 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
     addBounded(pluginState.tenants, tenantId);
   }
 
-	// Track team info from channelData
-	type TeamsChannelData = {
-		channelData?: {
-			team?: { id: string; name?: string };
-			channel?: { id: string; name?: string; type?: string };
-		};
-	};
-	const teamsActivity = activity as unknown as TeamsChannelData;
-	const teamData = teamsActivity.channelData?.team;
-	if (teamData?.id) {
-		addBoundedMap(pluginState.teams, teamData.id, {
-			id: teamData.id,
-			name: teamData.name || teamData.id,
-		});
-	}
+  // Track team info from channelData
+  type TeamsChannelData = {
+    channelData?: {
+      team?: { id: string; name?: string };
+      channel?: { id: string; name?: string; type?: string };
+    };
+  };
+  const teamsActivity = activity as unknown as TeamsChannelData;
+  const teamData = teamsActivity.channelData?.team;
+  if (teamData?.id) {
+    addBoundedMap(pluginState.teams, teamData.id, {
+      id: teamData.id,
+      name: teamData.name || teamData.id,
+    });
+  }
 
-	// Track channel info
-	const channelData = teamsActivity.channelData?.channel;
-	if (channelData?.id && teamData?.id) {
-		if (!pluginState.channels.has(teamData.id)) {
-			addBoundedMap(pluginState.channels, teamData.id, new Map());
-		}
-		const teamChannels = pluginState.channels.get(teamData.id);
-		if (teamChannels) {
-			addBoundedMap(teamChannels, channelData.id, {
-				id: channelData.id,
-				name: channelData.name || activity.conversation?.name || channelData.id,
-				type: channelData.type || "standard",
-			});
-		}
-	}
+  // Track channel info
+  const channelData = teamsActivity.channelData?.channel;
+  if (channelData?.id && teamData?.id) {
+    if (!pluginState.channels.has(teamData.id)) {
+      addBoundedMap(pluginState.channels, teamData.id, new Map());
+    }
+    const teamChannels = pluginState.channels.get(teamData.id);
+    if (teamChannels) {
+      addBoundedMap(teamChannels, channelData.id, {
+        id: channelData.id,
+        name: channelData.name || activity.conversation?.name || channelData.id,
+        type: channelData.type || "standard",
+      });
+    }
+  }
 
   // Check for slash commands first
   const cmdMatch = matchSlashCommand(text);
@@ -899,24 +964,21 @@ async function handleSlashCommand(
   _userName: string,
   conversationId: string,
 ): Promise<void> {
-	try {
-		await command.handler({
-			channel: `msteams:${conversationId}`,
-			channelType: "msteams",
-			sender: userId,
-			args: args ? args.split(" ").filter(Boolean) : [],
-			reply: async (msg: string) => {
-				await sendResponse(turnContext, msg);
-			},
-			getBotUsername: () => agentIdentity.name || "WOPR",
-		});
-	} catch (error: unknown) {
-		logger.error(`Slash command /${command.name} failed:`, String(error));
-		await sendResponse(
-			turnContext,
-			`Command /${command.name} failed. Please try again.`,
-		);
-	}
+  try {
+    await command.handler({
+      channel: `msteams:${conversationId}`,
+      channelType: "msteams",
+      sender: userId,
+      args: args ? args.split(" ").filter(Boolean) : [],
+      reply: async (msg: string) => {
+        await sendResponse(turnContext, msg);
+      },
+      getBotUsername: () => agentIdentity.name || "WOPR",
+    });
+  } catch (error: unknown) {
+    logger.error(`Slash command /${command.name} failed:`, String(error));
+    await sendResponse(turnContext, `Command /${command.name} failed. Please try again.`);
+  }
 }
 
 async function injectMessage(
@@ -1031,21 +1093,21 @@ const msteamsExtension = {
       return;
     }
 
-		await withRetry(async () => {
-			await adapter?.continueConversationAsync(
-				resolveCredentials()?.appId || "",
-				ref as ConversationReference,
-				async (turnContext: TurnContext) => {
-					const card = buildAdaptiveCard(options);
-					await turnContext.sendActivity({ attachments: [card] });
-				},
-			);
-		});
-	},
-	/** Download an attachment from a message. */
-	downloadAttachment,
-	/** Get stored conversation references. */
-	getConversationReferences: () => new Map(conversationReferences),
+    await withRetry(async () => {
+      await adapter?.continueConversationAsync(
+        resolveCredentials()?.appId || "",
+        ref as ConversationReference,
+        async (turnContext: TurnContext) => {
+          const card = buildAdaptiveCard(options);
+          await turnContext.sendActivity({ attachments: [card] });
+        },
+      );
+    });
+  },
+  /** Download an attachment from a message. */
+  downloadAttachment,
+  /** Get stored conversation references. */
+  getConversationReferences: () => new Map(conversationReferences),
 };
 
 // ============================================================================
@@ -1112,8 +1174,8 @@ const plugin: WOPRPlugin = {
     pluginState.initialized = true;
     pluginState.startedAt = Date.now();
 
-		// Create and register the WebMCP extension
-		const webmcpExtension = createMsteamsExtension(() => pluginState);
+    // Create and register the WebMCP extension
+    const webmcpExtension = createMsteamsExtension(() => pluginState);
 
     if (ctx.registerExtension) {
       ctx.registerExtension("msteams-webmcp", webmcpExtension);
@@ -1127,41 +1189,43 @@ const plugin: WOPRPlugin = {
     logger.info("Make sure to register this URL in Azure Bot Configuration");
   },
 
-	async shutdown(): Promise<void> {
-		if (isShuttingDown) return;
-		isShuttingDown = true;
+  async shutdown(): Promise<void> {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
 
-		logger?.info("Shutting down MS Teams plugin...");
+    logger?.info("Shutting down MS Teams plugin...");
 
-		// Run all cleanups
-		for (const cleanup of cleanups) {
-			try {
-				cleanup();
-			} catch (error: unknown) {
-				logger?.warn(`Cleanup failed: ${String(error)}`);
-			}
-		}
-		cleanups.length = 0;
+    // Run all cleanups
+    for (const cleanup of cleanups) {
+      try {
+        cleanup();
+      } catch (error: unknown) {
+        logger?.warn(`Cleanup failed: ${String(error)}`);
+      }
+    }
+    cleanups.length = 0;
 
-		// Unregister config schema
-		if (ctx?.unregisterConfigSchema) {
-			ctx.unregisterConfigSchema("msteams");
-		}
+    // Unregister config schema
+    if (ctx?.unregisterConfigSchema) {
+      ctx.unregisterConfigSchema("msteams");
+    }
 
-		// Unregister channel provider and extensions
-		if (ctx?.unregisterChannelProvider) {
-			ctx.unregisterChannelProvider("msteams");
-		}
-		if (ctx?.unregisterExtension) {
-			ctx.unregisterExtension("msteams");
-			ctx.unregisterExtension("msteams-webmcp");
-		}
+    // Unregister channel provider and extensions
+    if (ctx?.unregisterChannelProvider) {
+      ctx.unregisterChannelProvider("msteams");
+    }
+    if (ctx?.unregisterExtension) {
+      ctx.unregisterExtension("msteams");
+      ctx.unregisterExtension("msteams-webmcp");
+    }
 
     registeredCommands.clear();
     registeredParsers.clear();
     conversationReferences.clear();
+    pendingCallbacks.clear();
     adapter = null;
     ctx = null;
+    isShuttingDown = false;
 
     // Reset plugin state
     pluginState = {
