@@ -144,9 +144,6 @@ function initLogger(): winston.Logger {
 // Retry with Exponential Backoff + Jitter
 // ============================================================================
 
-/** Transient network error codes that are safe to retry. */
-const RETRYABLE_NETWORK_CODES = new Set(["ECONNRESET", "ETIMEDOUT"]);
-
 /**
  * Parse the Retry-After header value per RFC 7231.
  * Accepts either a number (delay in seconds) or an HTTP date string.
