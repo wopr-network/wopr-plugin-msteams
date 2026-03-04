@@ -815,6 +815,16 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
 
   // Handle Action.Submit invoke from Adaptive Card buttons
   if (activity.type === "invoke") {
+    const senderId = activity.from?.id;
+    const senderConversationType = activity.conversation?.conversationType;
+    if (senderId && !isAllowed(senderId, senderConversationType || "personal")) {
+      await turnContext.sendActivity({
+        type: "invokeResponse",
+        value: { status: 403, body: { error: "Forbidden" } },
+      } as Activity);
+      return;
+    }
+
     const value = activity.value as { action?: string; channelId?: string } | undefined;
     const action = value?.action;
     const replyToId = activity.replyToId;
@@ -828,14 +838,15 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
           } else if (action === "friend-request-deny" && cbs.onDeny) {
             await cbs.onDeny();
           }
+        } catch (err) {
+          logger?.error("Invoke callback failed", String(err));
         } finally {
           pendingCallbacks.delete(replyToId);
+          await turnContext.sendActivity({
+            type: "invokeResponse",
+            value: { status: 200, body: {} },
+          } as Activity);
         }
-
-        await turnContext.sendActivity({
-          type: "invokeResponse",
-          value: { status: 200, body: {} },
-        } as Activity);
         return;
       }
     }
