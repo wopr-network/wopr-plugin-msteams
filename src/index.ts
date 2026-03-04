@@ -164,6 +164,9 @@ export function parseRetryAfter(value: string | undefined | null): number {
   return 0;
 }
 
+/** Network error codes that are safe to retry (transient connectivity failures). */
+const RETRYABLE_NETWORK_CODES = new Set(["ECONNRESET", "ETIMEDOUT", "ESOCKETTIMEDOUT", "ECONNABORTED", "EAI_AGAIN"]);
+
 /**
  * Execute an async function with retry on transient errors (429, 5xx).
  * Uses exponential backoff with full jitter.
@@ -187,7 +190,8 @@ export async function withRetry<T>(
         code?: string;
       };
       const status = errObj?.response?.status ?? errObj?.statusCode ?? 0;
-      const isNetworkError = !errObj?.response && !!errObj?.code;
+      const isNetworkError =
+        !errObj?.response && typeof errObj?.code === "string" && RETRYABLE_NETWORK_CODES.has(errObj.code);
       const isRetryable = status === 429 || (status >= 500 && status < 600) || isNetworkError;
 
       if (!isRetryable || attempt === maxRetries) {
@@ -1161,6 +1165,13 @@ const plugin: WOPRPlugin = {
     if (ctx.registerExtension) {
       ctx.registerExtension("msteams", msteamsExtension);
       logger.info("Registered MS Teams extension");
+      // Register WebMCP status extension early so consumers can query online: false
+      // even when credentials are not yet configured.
+      ctx.registerExtension(
+        "msteams-webmcp",
+        createMsteamsExtension(() => pluginState),
+      );
+      logger.info("Registered MS Teams WebMCP extension");
     }
 
     // Refresh identity
@@ -1194,14 +1205,6 @@ const plugin: WOPRPlugin = {
     // Mark state as initialized
     pluginState.initialized = true;
     pluginState.startedAt = Date.now();
-
-    // Create and register the WebMCP extension
-    const webmcpExtension = createMsteamsExtension(() => pluginState);
-
-    if (ctx.registerExtension) {
-      ctx.registerExtension("msteams-webmcp", webmcpExtension);
-      logger.info("Registered MS Teams WebMCP extension");
-    }
 
     logger.info("MS Teams plugin initialized");
     logger.info(

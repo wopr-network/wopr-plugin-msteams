@@ -196,6 +196,15 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
+  it("does not retry on non-transient error codes (e.g. ENOENT)", async () => {
+    const { withRetry } = await import("../src/index.js");
+    const err = Object.assign(new Error("no such file"), { code: "ENOENT" });
+    const fn = vi.fn().mockRejectedValue(err);
+
+    await expect(withRetry(fn, { maxRetries: 3, baseDelayMs: 10 })).rejects.toEqual(err);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
   it("handles errors with statusCode property", async () => {
     const { withRetry } = await import("../src/index.js");
     const fn = vi.fn().mockRejectedValueOnce({ statusCode: 502 }).mockResolvedValueOnce("ok");

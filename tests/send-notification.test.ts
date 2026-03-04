@@ -16,8 +16,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createMockContext } from "./mocks/wopr-context.js";
 
-// Track adapter calls
-let mockAdapterInstance: any;
 const mockContinueConversation = vi.fn();
 const mockProcess = vi.fn();
 
@@ -26,7 +24,6 @@ vi.mock("botbuilder", () => {
     CloudAdapter: class MockCloudAdapter {
       onTurnError: any;
       constructor() {
-        mockAdapterInstance = this;
         this.onTurnError = null;
       }
       process = mockProcess;
