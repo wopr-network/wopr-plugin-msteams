@@ -164,13 +164,44 @@ describe("withRetry", () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it("handles errors without response object", async () => {
+  it("handles errors without response object and no code — not retried", async () => {
     const { withRetry } = await import("../src/index.js");
-    const err = new Error("network timeout");
+    const err = new Error("unknown error");
     const fn = vi.fn().mockRejectedValue(err);
 
     await expect(withRetry(fn, { maxRetries: 2, baseDelayMs: 10 })).rejects.toEqual(err);
-    // No status code means status 0, which is not retryable
+    // No status code and no error.code means non-retryable
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries on ECONNRESET network error", async () => {
+    const { withRetry } = await import("../src/index.js");
+    const networkErr = Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
+    const fn = vi.fn().mockRejectedValueOnce(networkErr).mockResolvedValueOnce("ok");
+
+    const result = await withRetry(fn, { maxRetries: 2, baseDelayMs: 10 });
+
+    expect(result).toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on ETIMEDOUT network error", async () => {
+    const { withRetry } = await import("../src/index.js");
+    const networkErr = Object.assign(new Error("timed out"), { code: "ETIMEDOUT" });
+    const fn = vi.fn().mockRejectedValueOnce(networkErr).mockResolvedValueOnce("ok");
+
+    const result = await withRetry(fn, { maxRetries: 2, baseDelayMs: 10 });
+
+    expect(result).toBe("ok");
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry on non-transient error codes (e.g. ENOENT)", async () => {
+    const { withRetry } = await import("../src/index.js");
+    const err = Object.assign(new Error("no such file"), { code: "ENOENT" });
+    const fn = vi.fn().mockRejectedValue(err);
+
+    await expect(withRetry(fn, { maxRetries: 3, baseDelayMs: 10 })).rejects.toEqual(err);
     expect(fn).toHaveBeenCalledTimes(1);
   });
 

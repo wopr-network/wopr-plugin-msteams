@@ -11,10 +11,16 @@ export interface MockWOPRPluginContext {
   saveConfig: ReturnType<typeof vi.fn>;
   registerConfigSchema: ReturnType<typeof vi.fn>;
   getPluginDir: ReturnType<typeof vi.fn>;
+  registerChannelProvider: ReturnType<typeof vi.fn>;
+  unregisterChannelProvider: ReturnType<typeof vi.fn>;
+  registerExtension: ReturnType<typeof vi.fn>;
+  unregisterExtension: ReturnType<typeof vi.fn>;
+  getExtension: ReturnType<typeof vi.fn>;
   log: {
     info: ReturnType<typeof vi.fn>;
     warn: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
+    debug: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -34,10 +40,16 @@ export function createMockContext(configData: Record<string, any> = {}): MockWOP
     }),
     registerConfigSchema: vi.fn(),
     getPluginDir: vi.fn().mockReturnValue("/tmp/wopr-test/plugins/msteams"),
+    registerChannelProvider: vi.fn(),
+    unregisterChannelProvider: vi.fn(),
+    registerExtension: vi.fn(),
+    unregisterExtension: vi.fn(),
+    getExtension: vi.fn().mockReturnValue(undefined),
     log: {
       info: vi.fn(),
       warn: vi.fn(),
       error: vi.fn(),
+      debug: vi.fn(),
     },
   };
 }
