@@ -834,6 +834,13 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
     if (replyToId && action) {
       const cbs = pendingCallbacks.get(replyToId);
       if (cbs) {
+        pendingCallbacks.delete(replyToId);
+        // Send invokeResponse before running callbacks so Teams always gets a
+        // timely response even if a callback throws.
+        await turnContext.sendActivity({
+          type: "invokeResponse",
+          value: { status: 200, body: {} },
+        } as Activity);
         try {
           if (action === "friend-request-accept" && cbs.onAccept) {
             await cbs.onAccept();
@@ -842,14 +849,8 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
           }
         } catch (err) {
           logger?.error("Invoke callback failed", String(err));
-        } finally {
-          pendingCallbacks.delete(replyToId);
-          await turnContext.sendActivity({
-            type: "invokeResponse",
-            value: { status: 200, body: {} },
-          } as Activity);
         }
-        return; // already sent 200 in finally block above
+        return;
       }
     }
 
