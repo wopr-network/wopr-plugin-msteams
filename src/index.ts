@@ -184,9 +184,11 @@ export async function withRetry<T>(
       const errObj = error as {
         response?: { status?: number; headers?: Record<string, string> };
         statusCode?: number;
+        code?: string;
       };
       const status = errObj?.response?.status ?? errObj?.statusCode ?? 0;
-      const isRetryable = status === 429 || (status >= 500 && status < 600);
+      const isNetworkError = !errObj?.response && !!errObj?.code;
+      const isRetryable = status === 429 || (status >= 500 && status < 600) || isNetworkError;
 
       if (!isRetryable || attempt === maxRetries) {
         throw error;
