@@ -847,9 +847,15 @@ async function processActivity(turnContext: TurnContext): Promise<void> {
             value: { status: 200, body: {} },
           } as Activity);
         }
-        return;
+        return; // already sent 200 in finally block above
       }
     }
+
+    // Always respond with 200 for any invoke activity to prevent the Teams error spinner
+    await turnContext.sendActivity({
+      type: "invokeResponse",
+      value: { status: 200, body: {} },
+    } as Activity);
     return;
   }
 
@@ -1132,6 +1138,7 @@ const plugin: WOPRPlugin = {
   manifest,
 
   async init(context: WOPRPluginContext): Promise<void> {
+    isShuttingDown = false;
     ctx = context;
     config = (context.getConfig() || {}) as MSTeamsConfig;
 
@@ -1236,7 +1243,6 @@ const plugin: WOPRPlugin = {
     pendingCallbacks.clear();
     adapter = null;
     ctx = null;
-    isShuttingDown = false;
 
     // Reset plugin state
     pluginState = {

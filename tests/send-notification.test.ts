@@ -5,10 +5,12 @@
  * - sendNotification is present on the registered provider
  * - Ignores non-friend-request notification types
  * - No-ops when no conversation reference exists
- * - Sends Adaptive Card via continueConversationAsync for friend-request
- * - Stores callbacks keyed on activity ID
- * - Handles invoke activities and fires onAccept/onDeny callbacks
- * - Clears pendingCallbacks on shutdown
+ * - Sends Adaptive Card via continueConversationAsync for friend-request,
+ *   asserting card body text, Action.Submit buttons, and channelId payload
+ * - Normalizes channelId without "msteams:" prefix (both lookup paths)
+ * - Stores callbacks keyed on activity ID and fires onAccept/onDeny on invoke
+ * - Always sends invokeResponse 200 even when no matching callback exists
+ * - Clears pendingCallbacks on shutdown so callbacks no longer fire
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -91,6 +93,7 @@ vi.mock("winston", () => {
 
 describe("sendNotification", () => {
   let plugin: any;
+  let handleWebhook: any;
   let mockCtx: any;
 
   beforeEach(async () => {
@@ -108,7 +111,9 @@ describe("sendNotification", () => {
       },
     );
 
-    plugin = (await import("../src/index.js")).default;
+    const module = await import("../src/index.js");
+    plugin = module.default;
+    handleWebhook = module.handleWebhook;
     mockCtx = createMockContext({
       appId: "test-app-id",
       appPassword: "test-password",
@@ -125,6 +130,62 @@ describe("sendNotification", () => {
     const calls = mockCtx.registerChannelProvider.mock.calls;
     if (!calls.length) throw new Error("registerChannelProvider was not called");
     return calls[0][0];
+  }
+
+  /**
+   * Drive a fake inbound message through handleWebhook → processActivity
+   * so that a conversation reference is stored for the given convId.
+   */
+  async function storeConvRef(convId: string): Promise<void> {
+    let processCallback: Function | null = null;
+    mockProcess.mockImplementationOnce(async (_req: any, _res: any, callback: Function) => {
+      processCallback = callback;
+    });
+
+    const activity = {
+      type: "message",
+      text: "hello",
+      from: { id: "user-1", name: "Alice" },
+      conversation: { id: convId, isGroup: false },
+      recipient: { id: "bot-1", name: "WOPR" },
+      channelId: "msteams",
+      serviceUrl: "https://smba.trafficmanager.net/amer/",
+    };
+
+    await handleWebhook(
+      { body: activity, headers: {} },
+      { status: vi.fn().mockReturnThis(), end: vi.fn() },
+    );
+
+    if (processCallback) {
+      const mockTurn = {
+        activity,
+        sendActivity: vi.fn().mockResolvedValue({ id: "ref-msg" }),
+      };
+      await (processCallback as Function)(mockTurn);
+    }
+  }
+
+  /**
+   * Drive an invoke activity through handleWebhook → processActivity.
+   * Returns the sendActivity mock so callers can assert on it.
+   */
+  async function driveInvoke(invokeActivity: any): Promise<ReturnType<typeof vi.fn>> {
+    let processCallback: Function | null = null;
+    mockProcess.mockImplementationOnce(async (_req: any, _res: any, callback: Function) => {
+      processCallback = callback;
+    });
+
+    await handleWebhook(
+      { body: invokeActivity, headers: {} },
+      { status: vi.fn().mockReturnThis(), end: vi.fn() },
+    );
+
+    const sendActivity = vi.fn().mockResolvedValue({ id: "invoke-resp" });
+    if (processCallback) {
+      await (processCallback as Function)({ activity: invokeActivity, sendActivity });
+    }
+    return sendActivity;
   }
 
   it("should have sendNotification on the channel provider", () => {
@@ -159,94 +220,213 @@ describe("sendNotification", () => {
   it("should send an adaptive card via continueConversationAsync for friend-request", async () => {
     const provider = getProvider();
 
-    // Populate conversationReferences by simulating an incoming message
-    // This requires calling the adapter process mock to trigger processActivity
-    // Instead, we simulate the store directly by sending a fake activity through the adapter
-    // We use the exported handleWebhook to drive an inbound message that stores the ref
-    const plugin2 = await import("../src/index.js");
-    const { handleWebhook } = plugin2;
+    await storeConvRef("conv-1");
 
-    if (handleWebhook) {
-      // Drive a fake inbound message to populate conversationReferences
-      let adapterProcessCallback: Function | null = null;
-      mockProcess.mockImplementationOnce(async (_req: any, _res: any, callback: Function) => {
-        adapterProcessCallback = callback;
-      });
-
-      const fakeReq = {
-        body: {
-          type: "message",
-          text: "hello",
-          from: { id: "user-1", name: "Alice" },
-          conversation: { id: "conv-1", isGroup: false },
-          recipient: { id: "bot-1", name: "WOPR" },
-          channelId: "msteams",
-          serviceUrl: "https://smba.trafficmanager.net/amer/",
-        },
-        headers: { authorization: "Bearer token" },
-      };
-      const fakeRes = { status: vi.fn().mockReturnThis(), end: vi.fn() };
-
-      await handleWebhook(fakeReq as any, fakeRes as any);
-
-      if (adapterProcessCallback) {
-        const mockTurn = {
-          activity: fakeReq.body,
-          sendActivity: vi.fn().mockResolvedValue({ id: "msg-1" }),
-        };
-        await adapterProcessCallback(mockTurn);
-      }
-    }
-
-    // Now test sendNotification with "conv-1" which should now have a ref
-    await provider.sendNotification(
-      "msteams:conv-1",
-      { type: "friend-request", from: "Alice", pubkey: "pk123" },
-      { onAccept: vi.fn(), onDeny: vi.fn() },
-    );
-
-    // Should have called continueConversationAsync at least once for the notification
-    expect(mockContinueConversation).toHaveBeenCalled();
-
-    // The call should pass a callback that sends a card
-    const lastCall = mockContinueConversation.mock.calls[mockContinueConversation.mock.calls.length - 1];
-    expect(lastCall[0]).toBe("test-app-id");
-  });
-
-  it("should store callbacks in pendingCallbacks keyed on activity ID", async () => {
-    const provider = getProvider();
-    const onAccept = vi.fn().mockResolvedValue(undefined);
-    const onDeny = vi.fn().mockResolvedValue(undefined);
-
-    let capturedTurnContext: any = null;
-    mockContinueConversation.mockImplementation(
+    // Override to capture what gets sent to sendActivity
+    let capturedSendActivity: ReturnType<typeof vi.fn> | null = null;
+    mockContinueConversation.mockImplementationOnce(
       async (_appId: string, _ref: any, callback: Function) => {
-        const mockTurn = {
-          sendActivity: vi.fn().mockResolvedValue({ id: "notify-activity-456" }),
-        };
-        capturedTurnContext = mockTurn;
-        await callback(mockTurn);
+        const sendActivity = vi.fn().mockResolvedValue({ id: "activity-123" });
+        capturedSendActivity = sendActivity;
+        await callback({ sendActivity });
       },
     );
 
-    // Manually add a conversation reference to simulate prior contact
-    // We do this by calling the plugin with a fake inbound that populates the map
-    // Since that's complex, we test the no-ref path and verify send was NOT called
     await provider.sendNotification(
-      "msteams:no-ref-conv",
+      "msteams:conv-1",
+      { type: "friend-request", from: "Alice" },
+      { onAccept: vi.fn(), onDeny: vi.fn() },
+    );
+
+    expect(mockContinueConversation).toHaveBeenCalled();
+    const lastCall = mockContinueConversation.mock.calls[mockContinueConversation.mock.calls.length - 1];
+    expect(lastCall[0]).toBe("test-app-id");
+
+    // Verify the Adaptive Card was sent with correct content
+    expect(capturedSendActivity).not.toBeNull();
+    expect(capturedSendActivity).toHaveBeenCalledTimes(1);
+    const sentActivity = capturedSendActivity!.mock.calls[0][0];
+    expect(sentActivity.attachments?.[0]?.contentType).toBe("application/vnd.microsoft.card.adaptive");
+
+    const card = sentActivity.attachments[0].content;
+    const bodyTexts = (card.body ?? [])
+      .map((b: any) => b?.text)
+      .filter((t: unknown): t is string => typeof t === "string");
+    expect(bodyTexts.join(" ")).toContain("Alice");
+    expect(bodyTexts.join(" ").toLowerCase()).toContain("connect");
+
+    // Verify Action.Submit buttons with correct action names and channelId
+    const submitActions = (card.actions ?? []).filter((a: any) => a?.type === "Action.Submit");
+    expect(submitActions).toHaveLength(2);
+
+    const accept = submitActions.find((a: any) => a?.data?.action === "friend-request-accept");
+    const deny = submitActions.find((a: any) => a?.data?.action === "friend-request-deny");
+    expect(accept).toBeDefined();
+    expect(deny).toBeDefined();
+    expect(accept!.data.channelId).toBe("msteams:conv-1");
+    expect(deny!.data.channelId).toBe("msteams:conv-1");
+  });
+
+  it("should find conversation reference when channelId has no msteams: prefix", async () => {
+    const provider = getProvider();
+
+    await storeConvRef("conv-2");
+
+    let capturedSendActivity: ReturnType<typeof vi.fn> | null = null;
+    mockContinueConversation.mockImplementationOnce(
+      async (_appId: string, _ref: any, callback: Function) => {
+        const sendActivity = vi.fn().mockResolvedValue({ id: "activity-456" });
+        capturedSendActivity = sendActivity;
+        await callback({ sendActivity });
+      },
+    );
+
+    // Pass the bare convId without the "msteams:" prefix
+    await provider.sendNotification(
+      "conv-2",
       { type: "friend-request", from: "Bob" },
+      { onAccept: vi.fn(), onDeny: vi.fn() },
+    );
+
+    // Should still call continueConversationAsync (reference lookup succeeded)
+    expect(mockContinueConversation).toHaveBeenCalled();
+    expect(capturedSendActivity).not.toBeNull();
+
+    // channelId in action data reflects what was passed in (no forced normalization)
+    const card = capturedSendActivity!.mock.calls[0][0].attachments[0].content;
+    const accept = (card.actions ?? []).find(
+      (a: any) => a?.type === "Action.Submit" && a?.data?.action === "friend-request-accept",
+    );
+    expect(accept).toBeDefined();
+    expect(accept!.data.channelId).toBe("conv-2");
+  });
+
+  it("should fire onAccept callback when invoke activity with friend-request-accept arrives", async () => {
+    const provider = getProvider();
+
+    await storeConvRef("conv-1");
+
+    const onAccept = vi.fn().mockResolvedValue(undefined);
+    const onDeny = vi.fn().mockResolvedValue(undefined);
+
+    // sendNotification stores callbacks under the activity ID returned by sendActivity
+    // The default beforeEach mock returns { id: "activity-123" }
+    await provider.sendNotification(
+      "msteams:conv-1",
+      { type: "friend-request", from: "Alice" },
       { onAccept, onDeny },
     );
 
-    // No ref means no call
-    expect(mockContinueConversation).not.toHaveBeenCalled();
+    // Drive an invoke with replyToId matching the stored activity ID
+    const invokeSendActivity = await driveInvoke({
+      type: "invoke",
+      replyToId: "activity-123",
+      value: { action: "friend-request-accept", channelId: "msteams:conv-1" },
+      from: { id: "user-1" },
+      conversation: { id: "conv-1" },
+      channelId: "msteams",
+      serviceUrl: "https://smba.trafficmanager.net/amer/",
+    });
+
+    expect(onAccept).toHaveBeenCalledTimes(1);
+    expect(onDeny).not.toHaveBeenCalled();
+
+    // Verify 200 invokeResponse was sent
+    expect(invokeSendActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "invokeResponse",
+        value: { status: 200, body: {} },
+      }),
+    );
   });
 
-  it("should clear pendingCallbacks on shutdown", async () => {
-    // Shutdown clears state — verify plugin re-init is clean
-    await plugin.shutdown();
-    await plugin.init(mockCtx);
+  it("should fire onDeny callback when invoke activity with friend-request-deny arrives", async () => {
     const provider = getProvider();
-    expect(typeof provider.sendNotification).toBe("function");
+
+    await storeConvRef("conv-1");
+
+    const onAccept = vi.fn().mockResolvedValue(undefined);
+    const onDeny = vi.fn().mockResolvedValue(undefined);
+
+    await provider.sendNotification(
+      "msteams:conv-1",
+      { type: "friend-request", from: "Alice" },
+      { onAccept, onDeny },
+    );
+
+    const invokeSendActivity = await driveInvoke({
+      type: "invoke",
+      replyToId: "activity-123",
+      value: { action: "friend-request-deny", channelId: "msteams:conv-1" },
+      from: { id: "user-1" },
+      conversation: { id: "conv-1" },
+      channelId: "msteams",
+      serviceUrl: "https://smba.trafficmanager.net/amer/",
+    });
+
+    expect(onDeny).toHaveBeenCalledTimes(1);
+    expect(onAccept).not.toHaveBeenCalled();
+    expect(invokeSendActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "invokeResponse", value: { status: 200, body: {} } }),
+    );
+  });
+
+  it("should always send invokeResponse 200 even when no matching callback exists", async () => {
+    const invokeSendActivity = await driveInvoke({
+      type: "invoke",
+      replyToId: "no-such-activity-id",
+      value: { action: "friend-request-accept", channelId: "msteams:conv-1" },
+      from: { id: "user-1" },
+      conversation: { id: "conv-1" },
+      channelId: "msteams",
+      serviceUrl: "https://smba.trafficmanager.net/amer/",
+    });
+
+    expect(invokeSendActivity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "invokeResponse",
+        value: { status: 200, body: {} },
+      }),
+    );
+  });
+
+  it("should clear pendingCallbacks on shutdown so callbacks no longer fire", async () => {
+    const provider = getProvider();
+
+    await storeConvRef("conv-1");
+
+    const onAccept = vi.fn().mockResolvedValue(undefined);
+
+    // Register callbacks
+    await provider.sendNotification(
+      "msteams:conv-1",
+      { type: "friend-request", from: "Alice" },
+      { onAccept, onDeny: vi.fn() },
+    );
+
+    // Shutdown clears pendingCallbacks
+    await plugin.shutdown();
+
+    // Re-init so the adapter is available for handleWebhook
+    await plugin.init(mockCtx);
+
+    // Drive invoke with the previously registered activity ID — callbacks are gone
+    const invokeSendActivity = await driveInvoke({
+      type: "invoke",
+      replyToId: "activity-123",
+      value: { action: "friend-request-accept", channelId: "msteams:conv-1" },
+      from: { id: "user-1" },
+      conversation: { id: "conv-1" },
+      channelId: "msteams",
+      serviceUrl: "https://smba.trafficmanager.net/amer/",
+    });
+
+    // Callback must not fire — it was cleared by shutdown
+    expect(onAccept).not.toHaveBeenCalled();
+
+    // But the 200 response is still sent (invoke always gets a response)
+    expect(invokeSendActivity).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "invokeResponse", value: { status: 200, body: {} } }),
+    );
   });
 });
