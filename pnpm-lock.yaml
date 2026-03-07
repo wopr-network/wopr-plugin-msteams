@@ -13,7 +13,7 @@ importers:
         version: https://codeload.github.com/wopr-network/wopr-plugin-types/tar.gz/cfcd18af295ef9eb2a8d7f34ea9729269460fa0f(zod@3.25.76)
       axios:
         specifier: ^1.13.5
-        version: 1.13.5
+        version: 1.13.6
       botbuilder:
         specifier: ^4.22.0
         version: 4.23.3
@@ -522,8 +522,8 @@ packages:
   asynckit@0.4.0:
     resolution: {integrity: sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==}
 
-  axios@1.13.5:
-    resolution: {integrity: sha512-cz4ur7Vb0xS4/KUN0tPWe44eqxrIu31me+fbang3ijiNscE129POzipJJA6zniq2C/Z6sJCjMimjS8Lc/GAs8Q==}
+  axios@1.13.6:
+    resolution: {integrity: sha512-ChTCHMouEe2kn713WHbQGcuYrr6fXTBiu460OTwWrWob16g1bXn4vtz07Ope7ewMozJAnEquLk5lWQWtBig9DQ==}
 
   base64-js@1.5.1:
     resolution: {integrity: sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==}
@@ -1495,7 +1495,7 @@ snapshots:
 
   asynckit@0.4.0: {}
 
-  axios@1.13.5:
+  axios@1.13.6:
     dependencies:
       follow-redirects: 1.15.11
       form-data: 4.0.5
@@ -1539,7 +1539,7 @@ snapshots:
     dependencies:
       '@azure/core-rest-pipeline': 1.22.2
       '@azure/msal-node': 2.16.3
-      axios: 1.13.5
+      axios: 1.13.6
       botbuilder-core: 4.23.3
       botbuilder-stdlib: 4.23.3-internal
       botframework-connector: 4.23.3
@@ -1564,7 +1564,7 @@ snapshots:
       '@azure/identity': 4.13.0
       '@azure/msal-node': 2.16.3
       '@types/jsonwebtoken': 9.0.6
-      axios: 1.13.5
+      axios: 1.13.6
       base64url: 3.0.1
       botbuilder-stdlib: 4.23.3-internal
       botframework-schema: 4.23.3
