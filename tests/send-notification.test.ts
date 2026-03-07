@@ -98,15 +98,13 @@ describe("sendNotification", () => {
     vi.clearAllMocks();
 
     // Default: continueConversationAsync calls the callback with a mock turn context
-    mockContinueConversation.mockImplementation(
-      async (_appId: string, _ref: any, callback: Function) => {
-        const mockTurnContext = {
-          sendActivity: vi.fn().mockResolvedValue({ id: "activity-123" }),
-          sendInvokeResponse: vi.fn().mockResolvedValue(undefined),
-        };
-        await callback(mockTurnContext);
-      },
-    );
+    mockContinueConversation.mockImplementation(async (_appId: string, _ref: any, callback: Function) => {
+      const mockTurnContext = {
+        sendActivity: vi.fn().mockResolvedValue({ id: "activity-123" }),
+        sendInvokeResponse: vi.fn().mockResolvedValue(undefined),
+      };
+      await callback(mockTurnContext);
+    });
 
     const module = await import("../src/index.js");
     plugin = module.default;
@@ -149,10 +147,7 @@ describe("sendNotification", () => {
       serviceUrl: "https://smba.trafficmanager.net/amer/",
     };
 
-    await handleWebhook(
-      { body: activity, headers: {} },
-      { status: vi.fn().mockReturnThis(), end: vi.fn() },
-    );
+    await handleWebhook({ body: activity, headers: {} }, { status: vi.fn().mockReturnThis(), end: vi.fn() });
 
     if (processCallback) {
       const mockTurn = {
@@ -173,10 +168,7 @@ describe("sendNotification", () => {
       processCallback = callback;
     });
 
-    await handleWebhook(
-      { body: invokeActivity, headers: {} },
-      { status: vi.fn().mockReturnThis(), end: vi.fn() },
-    );
+    await handleWebhook({ body: invokeActivity, headers: {} }, { status: vi.fn().mockReturnThis(), end: vi.fn() });
 
     const sendActivity = vi.fn().mockResolvedValue({ id: "invoke-resp" });
     if (processCallback) {
@@ -193,11 +185,7 @@ describe("sendNotification", () => {
   it("should ignore non-friend-request notification types", async () => {
     const provider = getProvider();
 
-    await provider.sendNotification(
-      "msteams:conv-1",
-      { type: "unknown-type" },
-      { onAccept: vi.fn(), onDeny: vi.fn() },
-    );
+    await provider.sendNotification("msteams:conv-1", { type: "unknown-type" }, { onAccept: vi.fn(), onDeny: vi.fn() });
 
     expect(mockContinueConversation).not.toHaveBeenCalled();
   });
@@ -221,13 +209,11 @@ describe("sendNotification", () => {
 
     // Override to capture what gets sent to sendActivity
     let capturedSendActivity: ReturnType<typeof vi.fn> | null = null;
-    mockContinueConversation.mockImplementationOnce(
-      async (_appId: string, _ref: any, callback: Function) => {
-        const sendActivity = vi.fn().mockResolvedValue({ id: "activity-123" });
-        capturedSendActivity = sendActivity;
-        await callback({ sendActivity });
-      },
-    );
+    mockContinueConversation.mockImplementationOnce(async (_appId: string, _ref: any, callback: Function) => {
+      const sendActivity = vi.fn().mockResolvedValue({ id: "activity-123" });
+      capturedSendActivity = sendActivity;
+      await callback({ sendActivity });
+    });
 
     await provider.sendNotification(
       "msteams:conv-1",
@@ -270,13 +256,11 @@ describe("sendNotification", () => {
     await storeConvRef("conv-2");
 
     let capturedSendActivity: ReturnType<typeof vi.fn> | null = null;
-    mockContinueConversation.mockImplementationOnce(
-      async (_appId: string, _ref: any, callback: Function) => {
-        const sendActivity = vi.fn().mockResolvedValue({ id: "activity-456" });
-        capturedSendActivity = sendActivity;
-        await callback({ sendActivity });
-      },
-    );
+    mockContinueConversation.mockImplementationOnce(async (_appId: string, _ref: any, callback: Function) => {
+      const sendActivity = vi.fn().mockResolvedValue({ id: "activity-456" });
+      capturedSendActivity = sendActivity;
+      await callback({ sendActivity });
+    });
 
     // Pass the bare convId without the "msteams:" prefix
     await provider.sendNotification(
@@ -308,11 +292,7 @@ describe("sendNotification", () => {
 
     // sendNotification stores callbacks under the activity ID returned by sendActivity
     // The default beforeEach mock returns { id: "activity-123" }
-    await provider.sendNotification(
-      "msteams:conv-1",
-      { type: "friend-request", from: "Alice" },
-      { onAccept, onDeny },
-    );
+    await provider.sendNotification("msteams:conv-1", { type: "friend-request", from: "Alice" }, { onAccept, onDeny });
 
     // Drive an invoke with replyToId matching the stored activity ID
     const invokeSendActivity = await driveInvoke({
@@ -345,11 +325,7 @@ describe("sendNotification", () => {
     const onAccept = vi.fn().mockResolvedValue(undefined);
     const onDeny = vi.fn().mockResolvedValue(undefined);
 
-    await provider.sendNotification(
-      "msteams:conv-1",
-      { type: "friend-request", from: "Alice" },
-      { onAccept, onDeny },
-    );
+    await provider.sendNotification("msteams:conv-1", { type: "friend-request", from: "Alice" }, { onAccept, onDeny });
 
     const invokeSendActivity = await driveInvoke({
       type: "invoke",
